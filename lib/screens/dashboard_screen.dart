@@ -4,7 +4,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/app_provider.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/dashboard_button.dart';
-import 'add_patient_screen.dart';
+import '../widgets/add_patient_dialog.dart';
 import 'payment_screen.dart';
 import 'overdue_payments_screen.dart';
 import 'invoice_form_screen.dart';
@@ -53,12 +53,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    // اللوگو واسم العيادة
+                    // شعار العيادة والعنوان
                     _buildHeader(),
 
                     const SizedBox(height: 30),
 
-                    // باقي المحتوى (الأزرار والإحصائيات)
+                    // المحتوى الرئيسي
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -73,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         // الإحصائيات (الجهة اليمنى)
                         Expanded(
                           flex: 1,
-                          child: _buildStatistics(appProvider, context),
+                          child: _buildStatistics(appProvider),
                         ),
                       ],
                     ),
@@ -87,25 +87,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // 🟢 اللوگو + اسم العيادة
   Widget _buildHeader() {
-    return Column(
-      children: [
-        Image.asset(
-          'assets/new-farah.png', // غير المسار حسب ملفك
-          width: 120,
-          height: 120,
-        ),
-        const SizedBox(height: 5),
-        Text(
-          'عيادة فرح لطب الأسنان',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: const Color(0xFF649FCC),
-                fontWeight: FontWeight.bold,
+    return Card(
+      elevation: 10,
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Row(
+          children: [
+            // شعار العيادة
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFF649FCC).withOpacity(0.1),
+                shape: BoxShape.circle,
               ),
-          textAlign: TextAlign.center,
+              child: const Icon(
+                FontAwesomeIcons.tooth,
+                size: 40,
+                color: Color(0xFF649FCC),
+              ),
+            ),
+
+            const SizedBox(width: 20),
+
+            // معلومات العيادة
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'عيادة فرح لطب الأسنان',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: const Color(0xFF649FCC),
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'نظام إدارة الكمبيالات والتسديدات',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -131,12 +161,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onTap: () {
             showDialog(
               context: context,
-              builder: (context) => const Dialog(
-                child: SizedBox(
-                  width: 500,
-                  child: AddPatientDialog(), // منبثقة
-                ),
-              ),
+              builder: (context) => const AddPatientDialog(),
             );
           },
         ),
@@ -191,116 +216,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildStatistics(AppProvider appProvider, BuildContext context) {
-    final stats = [
-      {
-        'title': 'إجمالي الكمبيالات',
-        'value': '${appProvider.totalAmount.toStringAsFixed(0)} د.ع',
-        'icon': FontAwesomeIcons.coins,
-        'color': const Color(0xFF3498DB),
-      },
-      {
-        'title': 'المبالغ المسددة',
-        'value': '${appProvider.paidAmount.toStringAsFixed(0)} د.ع',
-        'icon': FontAwesomeIcons.circleCheck,
-        'color': const Color(0xFF27AE60),
-      },
-      {
-        'title': 'المبالغ المتبقية',
-        'value': '${appProvider.remainingAmount.toStringAsFixed(0)} د.ع',
-        'icon': FontAwesomeIcons.hourglassHalf,
-        'color': const Color(0xFFF39C12),
-      },
-      {
-        'title': 'عدد الكمبيالات',
-        'value': '${appProvider.remainingBillsCount}',
-        'icon': FontAwesomeIcons.fileInvoice,
-        'color': const Color(0xFFE74C3C),
-      },
-    ];
-
+  Widget _buildStatistics(AppProvider appProvider) {
     return Column(
       children: [
         Text(
           'الإحصائيات العامة',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 color: const Color(0xFF649FCC),
                 fontWeight: FontWeight.bold,
               ),
         ),
+
         const SizedBox(height: 20),
 
-        // شبكة الكروت
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, // صفين × عمودين
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.2, // يصغر البطاقات
-          ),
-          itemCount: stats.length,
-          itemBuilder: (context, index) {
-            final item = stats[index];
-            return Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF4F6F9),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  // ظل غامق
-                  BoxShadow(
-                    color: Colors.grey.shade400,
-                    offset: const Offset(4, 4),
-                    blurRadius: 8,
-                  ),
-                  // ظل فاتح (يعطي 3D)
-                  const BoxShadow(
-                    color: Colors.white,
-                    offset: Offset(-4, -4),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // دائرة فيها أيقونة
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: (item['color'] as Color).withOpacity(0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      item['icon'] as IconData,
-                      color: item['color'] as Color,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    item['title'] as String,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    item['value'] as String,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: item['color'] as Color,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+        // المبلغ الكلي للكمبيالات
+        StatsCard(
+          title: 'المبلغ الكلي للكمبيالات',
+          value: '${appProvider.totalAmount.toStringAsFixed(0)} د.ع',
+          icon: FontAwesomeIcons.coins,
+          color: const Color(0xFF3498DB),
+        ),
+
+        const SizedBox(height: 16),
+
+        // المبالغ المسددة
+        StatsCard(
+          title: 'المبالغ المسددة',
+          value: '${appProvider.paidAmount.toStringAsFixed(0)} د.ع',
+          icon: FontAwesomeIcons.circleCheck,
+          color: const Color(0xFF27AE60),
+        ),
+
+        const SizedBox(height: 16),
+
+        // المبالغ المتبقية
+        StatsCard(
+          title: 'المبالغ المتبقية',
+          value: '${appProvider.remainingAmount.toStringAsFixed(0)} د.ع',
+          icon: FontAwesomeIcons.hourglassHalf,
+          color: const Color(0xFFF39C12),
+        ),
+
+        const SizedBox(height: 16),
+
+        // عدد الكمبيالات المتبقية
+        StatsCard(
+          title: 'عدد الكمبيالات المتبقية',
+          value: '${appProvider.remainingBillsCount}',
+          icon: FontAwesomeIcons.fileInvoice,
+          color: const Color(0xFFE74C3C),
         ),
       ],
     );

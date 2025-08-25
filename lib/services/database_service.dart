@@ -1,5 +1,5 @@
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as path;
 import '../models/patient.dart';
 import '../models/payment.dart';
 
@@ -13,10 +13,10 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'dental_clinic.db');
+    String dbPath = path.join(await getDatabasesPath(), 'dental_clinic.db');
 
     return await openDatabase(
-      path,
+      dbPath,
       version: 1,
       onCreate: _createDatabase,
     );

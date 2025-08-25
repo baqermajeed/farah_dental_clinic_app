@@ -143,122 +143,161 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // التاريخ
-              _buildDateField(),
-              const SizedBox(height: 20),
-
-              // اسم المريض
-              _buildTextField(
-                controller: _nameController,
-                label: 'اسم المريض',
-                icon: FontAwesomeIcons.user,
-                hint: 'أدخل اسم المريض الكامل',
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'يرجى إدخال اسم المريض';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // مبلغ الكمبيالة
-              _buildTextField(
-                controller: _amountController,
-                label: 'مبلغ الكمبيالة (د.ع)',
-                icon: FontAwesomeIcons.coins,
-                hint: 'أدخل المبلغ الإجمالي',
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'يرجى إدخال مبلغ الكمبيالة';
-                  }
-                  if (double.tryParse(value) == null ||
-                      double.parse(value) <= 0) {
-                    return 'يرجى إدخال مبلغ صحيح';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // عدد الأشهر
-              _buildTextField(
-                controller: _monthsController,
-                label: 'عدد الأشهر',
-                icon: FontAwesomeIcons.calendar,
-                hint: 'أدخل عدد أشهر التقسيط',
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'يرجى إدخال عدد الأشهر';
-                  }
-                  if (int.tryParse(value) == null || int.parse(value) <= 0) {
-                    return 'يرجى إدخال عدد أشهر صحيح';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // رقم الهاتف
-              _buildTextField(
-                controller: _phoneController,
-                label: 'رقم الهاتف',
-                icon: FontAwesomeIcons.phone,
-                hint: 'أدخل رقم الهاتف',
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'يرجى إدخال رقم الهاتف';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 32),
-
-              // زر الإضافة
-              SizedBox(
-                width: 250,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _addPatient,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF27AE60),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(FontAwesomeIcons.plus),
-                            SizedBox(width: 12),
-                            Text(
-                              'إضافة المريض',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // عنوان الدايلوج
+                Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF27AE60).withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        FontAwesomeIcons.userPlus,
+                        size: 24,
+                        color: Color(0xFF27AE60),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'تسجيل مريض جديد',
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: const Color(0xFF27AE60),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 24),
+
+                // التاريخ
+                _buildDateField(),
+                const SizedBox(height: 20),
+
+                // اسم المريض
+                _buildTextField(
+                  controller: _nameController,
+                  label: 'اسم المريض',
+                  icon: FontAwesomeIcons.user,
+                  hint: 'أدخل اسم المريض الكامل',
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال اسم المريض';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // مبلغ الكمبيالة
+                _buildTextField(
+                  controller: _amountController,
+                  label: 'مبلغ الكمبيالة (د.ع)',
+                  icon: FontAwesomeIcons.coins,
+                  hint: 'أدخل المبلغ الإجمالي',
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال مبلغ الكمبيالة';
+                    }
+                    if (double.tryParse(value) == null ||
+                        double.parse(value) <= 0) {
+                      return 'يرجى إدخال مبلغ صحيح';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // عدد الأشهر
+                _buildTextField(
+                  controller: _monthsController,
+                  label: 'عدد الأشهر',
+                  icon: FontAwesomeIcons.calendar,
+                  hint: 'أدخل عدد أشهر التقسيط',
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال عدد الأشهر';
+                    }
+                    if (int.tryParse(value) == null || int.parse(value) <= 0) {
+                      return 'يرجى إدخال عدد أشهر صحيح';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // رقم الهاتف
+                _buildTextField(
+                  controller: _phoneController,
+                  label: 'رقم الهاتف',
+                  icon: FontAwesomeIcons.phone,
+                  hint: 'أدخل رقم الهاتف',
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال رقم الهاتف';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 32),
+
+                // زر الإضافة
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _addPatient,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF27AE60),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(FontAwesomeIcons.plus),
+                              SizedBox(width: 12),
+                              Text(
+                                'إضافة المريض',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
