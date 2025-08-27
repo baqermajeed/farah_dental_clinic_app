@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../providers/app_provider.dart';
 import 'dashboard_screen.dart';
-// Ensure that dashboard_screen.dart contains a class named DashboardScreen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,11 +17,6 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isPasswordVisible = false;
-  bool _isLoading = false;
-
-  // بيانات الاعتماد المحلية
-  final String _correctUsername = 'admin';
-  final String _correctPassword = 'farah123';
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -64,24 +60,19 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    final success = await context.read<AppProvider>().login(
+          _usernameController.text.trim(),
+          _passwordController.text.trim(),
+        );
 
-    // محاكاة تأخير تسجيل الدخول
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (_usernameController.text == _correctUsername &&
-        _passwordController.text == _correctPassword) {
-      // تسجيل دخول ناجح
-      if (mounted) {
+    if (mounted) {
+      if (success) {
+        // تسجيل دخول ناجح
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const DashboardScreen()),
         );
-      }
-    } else {
-      // تسجيل دخول فاشل
-      if (mounted) {
+      } else {
+        // تسجيل دخول فاشل
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('اسم المستخدم أو كلمة المرور غير صحيحة'),
@@ -94,10 +85,6 @@ class _LoginScreenState extends State<LoginScreen>
         );
       }
     }
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
   @override
@@ -231,37 +218,42 @@ class _LoginScreenState extends State<LoginScreen>
                             const SizedBox(height: 32),
 
                             // زر تسجيل الدخول
-                            SizedBox(
-                              width: double.infinity,
-                              height: 56,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _login,
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(
-                                              FontAwesomeIcons.rightToBracket),
-                                          const SizedBox(width: 12),
-                                          Text(
-                                            'تسجيل الدخول',
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
+                            Consumer<AppProvider>(
+                              builder: (context, appProvider, child) {
+                                return SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: ElevatedButton(
+                                    onPressed:
+                                        appProvider.isLoading ? null : _login,
+                                    child: appProvider.isLoading
+                                        ? const SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2,
                                             ),
+                                          )
+                                        : const Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(FontAwesomeIcons
+                                                  .rightToBracket),
+                                              SizedBox(width: 12),
+                                              Text(
+                                                'تسجيل الدخول',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                              ),
+                                  ),
+                                );
+                              },
                             ),
 
                             const SizedBox(height: 24),

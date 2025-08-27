@@ -6,6 +6,8 @@ class Patient {
   final String phoneNumber;
   final DateTime registrationDate;
   final double paidAmount;
+  final String address;
+  final String treatmentType; // <--- ضفنا هذا
 
   Patient({
     this.id,
@@ -15,27 +17,29 @@ class Patient {
     required this.phoneNumber,
     required this.registrationDate,
     this.paidAmount = 0.0,
+    this.address = '',
+    this.treatmentType = '', // افتراضي فارغ
   });
 
-  // الحصول على المبلغ المتبقي
+  // المبلغ المتبقي
   double get remainingAmount => totalAmount - paidAmount;
 
-  // الحصول على المبلغ الشهري
+  // المبلغ الشهري
   double get monthlyAmount => totalAmount / totalMonths;
 
-  // الحصول على عدد الأشهر المتبقية
+  // الأشهر المتبقية
   int get remainingMonths {
     final paidMonths = (paidAmount / monthlyAmount).floor();
     return totalMonths - paidMonths;
   }
 
-  // الحصول على تاريخ التسديد القادم
+  // تاريخ التسديد القادم
   DateTime get nextPaymentDate {
     final paidMonths = (paidAmount / monthlyAmount).floor();
     return registrationDate.add(Duration(days: 30 * (paidMonths + 1)));
   }
 
-  // تحويل إلى Map للحفظ في قاعدة البيانات
+  // تحويل إلى Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -45,6 +49,8 @@ class Patient {
       'phoneNumber': phoneNumber,
       'registrationDate': registrationDate.millisecondsSinceEpoch,
       'paidAmount': paidAmount,
+      'address': address,
+      'treatmentType': treatmentType, // <--- ضفنا هذا
     };
   }
 
@@ -53,16 +59,18 @@ class Patient {
     return Patient(
       id: map['id'],
       name: map['name'],
-      totalAmount: map['totalAmount'],
+      totalAmount: (map['totalAmount'] as num).toDouble(),
       totalMonths: map['totalMonths'],
       phoneNumber: map['phoneNumber'],
       registrationDate:
           DateTime.fromMillisecondsSinceEpoch(map['registrationDate']),
-      paidAmount: map['paidAmount'] ?? 0.0,
+      paidAmount: (map['paidAmount'] ?? 0.0).toDouble(),
+      address: map['address'] ?? '',
+      treatmentType: map['treatmentType'] ?? '', // <--- ضفنا هذا
     );
   }
 
-  // نسخ مع تحديث البيانات
+  // نسخة مع تعديل
   Patient copyWith({
     int? id,
     String? name,
@@ -71,6 +79,8 @@ class Patient {
     String? phoneNumber,
     DateTime? registrationDate,
     double? paidAmount,
+    String? address,
+    String? treatmentType,
   }) {
     return Patient(
       id: id ?? this.id,
@@ -80,6 +90,8 @@ class Patient {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       registrationDate: registrationDate ?? this.registrationDate,
       paidAmount: paidAmount ?? this.paidAmount,
+      address: address ?? this.address,
+      treatmentType: treatmentType ?? this.treatmentType,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
+import 'screens/dashboard_screen.dart';
 import 'providers/app_provider.dart';
 
 void main() {
@@ -98,6 +99,16 @@ class DentalClinicApp extends StatelessWidget {
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           ),
 
+          // تصميم البطاقات
+          cardTheme: CardThemeData(
+            elevation: 8,
+            shadowColor: const Color(0xFF649FCC).withOpacity(0.2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            color: Colors.white,
+          ),
+
           // شريط التطبيق
           appBarTheme: const AppBarTheme(
             backgroundColor: Color(0xFF649FCC),
@@ -111,8 +122,80 @@ class DentalClinicApp extends StatelessWidget {
             ),
           ),
         ),
-        home: const LoginScreen(),
+        home: const AuthWrapper(),
       ),
+    );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    // التحقق من حالة تسجيل الدخول عند بدء التطبيق
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppProvider>().checkLoginStatus();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AppProvider>(
+      builder: (context, appProvider, child) {
+        // إذا كان التطبيق يتحقق من حالة تسجيل الدخول
+        if (appProvider.isLoading) {
+          return Scaffold(
+            body: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFF649FCC),
+                    const Color(0xFFD0EBFF),
+                    const Color(0xFFF2EDE9),
+                  ],
+                ),
+              ),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      'جاري تحميل التطبيق...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        // إذا كان المستخدم مسجل الدخول
+        if (appProvider.isLoggedIn) {
+          return const DashboardScreen();
+        }
+
+        // إذا لم يكن مسجل الدخول
+        return const LoginScreen();
+      },
     );
   }
 }

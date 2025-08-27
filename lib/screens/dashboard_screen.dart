@@ -29,6 +29,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('الواجهة الرئيسية'),
+        automaticallyImplyLeading: false,
+        actions: [
+          // زر تسجيل الخروج
+          Consumer<AppProvider>(
+            builder: (context, appProvider, child) {
+              return PopupMenuButton<String>(
+                icon: const Icon(FontAwesomeIcons.user),
+                onSelected: (value) async {
+                  if (value == 'logout') {
+                    await appProvider.logout();
+                  }
+                },
+                itemBuilder: (BuildContext context) => [
+                  PopupMenuItem<String>(
+                    value: 'user_info',
+                    enabled: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'مرحباً',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        Text(
+                          appProvider.currentUser ?? 'المستخدم',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF649FCC),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem<String>(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(FontAwesomeIcons.rightFromBracket, size: 16),
+                        SizedBox(width: 8),
+                        Text('تسجيل الخروج'),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
