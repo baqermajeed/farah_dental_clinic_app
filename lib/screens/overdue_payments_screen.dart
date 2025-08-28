@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/patient.dart';
 import '../models/payment.dart';
@@ -13,461 +14,423 @@ class OverduePaymentsScreen extends StatefulWidget {
 }
 
 class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
-  String _searchQuery = '';
-  final TextEditingController _searchController = TextEditingController();
+  Map<String, TextEditingController> _notesControllers = {};
+  Map<String, String> _savedNotes = {}; // لحفظ الملاحظات
 
   @override
   void dispose() {
-    _searchController.dispose();
+    for (var controller in _notesControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  // حفظ الملاحظة
+  void _saveNote(String patientName, String note) {
+    setState(() {
+      _savedNotes[patientName] = note;
+    });
+    // هنا يمكن إضافة كود لحفظ الملاحظة في قاعدة البيانات
+  }
+
+  // حساب عدد الأيام المتأخرة
+  int _calculateOverdueDays(Patient patient, List<Payment> payments) {
+    final patientPayments =
+        payments.where((p) => p.patientName == patient.name).toList();
+    patientPayments.sort((a, b) => a.paymentDate.compareTo(b.paymentDate));
+
+    // حساب عدد الأشهر المنقضية منذ التسجيل
+    final monthsSinceRegistration =
+        DateTime.now().difference(patient.registrationDate).inDays ~/ 30;
+
+    // عدد الدفعات المطلوبة حتى الآن
+    final expectedPayments = monthsSinceRegistration;
+
+    // عدد الدفعات الفعلية
+    final actualPayments = patientPayments.length;
+
+    if (actualPayments < expectedPayments && expectedPayments > 0) {
+      // حساب تاريخ آخر دفعة مطلوبة
+      final lastExpectedPaymentDate = DateTime(
+        patient.registrationDate.year,
+        patient.registrationDate.month + expectedPayments,
+        patient.registrationDate.day,
+      );
+
+      // إذا كان التاريخ الحالي بعد تاريخ الدفعة المطلوبة
+      if (DateTime.now().isAfter(lastExpectedPaymentDate)) {
+        return DateTime.now().difference(lastExpectedPaymentDate).inDays;
+      }
+    }
+
+    return 0;
+  }
+
+  // الحصول على المرضى المتأخرين
+  List<Patient> _getOverduePatients(
+      List<Patient> patients, List<Payment> payments) {
+    return patients.where((patient) {
+      final overdueDays = _calculateOverdueDays(patient, payments);
+      return overdueDays > 0;
+    }).toList();
+  }
+
+  // حساب المبلغ المتبقي للمريض
+  double _getRemainingAmount(Patient patient, List<Payment> payments) {
+    final patientPayments =
+        payments.where((p) => p.patientName == patient.name).toList();
+    final totalPaid =
+        patientPayments.fold<double>(0, (sum, payment) => sum + payment.amount);
+    return patient.totalAmount - totalPaid;
+  }
+
+  // حساب المبلغ الشهري
+  double _getMonthlyAmount(Patient patient) {
+    return patient.totalAmount / patient.installmentMonths;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF2EDE9),
       appBar: AppBar(
-        title: const Text('التسديدات المتأخرة'),
+        title: const Text(
+          'التسديدات المتأخرة للمراجعين',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: const Color(0xFF649FCC),
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF649FCC).withOpacity(0.1),
-              const Color(0xFFF2EDE9),
-            ],
+      body: Consumer<AppProvider>(
+        builder: (context, appProvider, child) {
+          final overduePatients =
+              _getOverduePatients(appProvider.patients, appProvider.payments);
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                // الجدول الرئيسي
+                _buildOverdueTable(overduePatients, appProvider.payments),
+
+                const SizedBox(height: 24),
+
+                // كارتات الإحصائيات
+                _buildStatisticsCards(overduePatients, appProvider.payments),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildOverdueTable(
+      List<Patient> overduePatients, List<Payment> payments) {
+    if (overduePatients.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-        ),
-        child: SafeArea(
-          child: Consumer<AppProvider>(
-            builder: (context, appProvider, child) {
-              final overduePatients = appProvider.getOverduePatients();
-              final filteredPatients = _filterPatients(overduePatients);
+        ],
+      ),
+      child: Column(
+        children: [
+          // عنوان الجدول
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: Color(0xFF649FCC),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  FontAwesomeIcons.triangleExclamation,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'المراجعين المتأخرين في التسديد',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${overduePatients.length} مريض',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
+          // رؤوس الأعمدة
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFFD0EBFF),
+            ),
+            child: Table(
+              columnWidths: const {
+                0: FlexColumnWidth(2.5), // اسم المراجع
+                1: FlexColumnWidth(2), // تاريخ التسجيل
+                2: FlexColumnWidth(1.5), // عدد الأيام المتأخرة
+                3: FlexColumnWidth(2), // المبلغ المتبقي
+                4: FlexColumnWidth(2), // القسط المستحق
+                5: FlexColumnWidth(2), // رقم الهاتف
+                6: FlexColumnWidth(3), // الملاحظات
+              },
+              children: [
+                TableRow(
                   children: [
-                    // شعار الصفحة
-                    _buildHeader(overduePatients.length),
-
-                    const SizedBox(height: 24),
-
-                    // شريط البحث
-                    _buildSearchBar(),
-
-                    const SizedBox(height: 24),
-
-                    // قائمة المرضى المتأخرين
-                    if (filteredPatients.isEmpty)
-                      _buildEmptyState()
-                    else
-                      _buildPatientsList(filteredPatients, appProvider),
+                    _buildTableHeader('اسم المراجع'),
+                    _buildTableHeader('تاريخ تسجيل\nالاستمارة'),
+                    _buildTableHeader('عدد الأيام\nالمتأخرة'),
+                    _buildTableHeader('المبلغ المتبقي'),
+                    _buildTableHeader('القسط المستحق'),
+                    _buildTableHeader('رقم الهاتف'),
+                    _buildTableHeader('الملاحظة'),
                   ],
                 ),
-              );
-            },
+              ],
+            ),
+          ),
+
+          // بيانات الجدول
+          ...overduePatients.asMap().entries.map((entry) {
+            final index = entry.key;
+            final patient = entry.value;
+            return _buildTableRow(patient, payments, index);
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF649FCC),
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildTableRow(Patient patient, List<Payment> payments, int index) {
+    final overdueDays = _calculateOverdueDays(patient, payments);
+    final remainingAmount = _getRemainingAmount(patient, payments);
+    final monthlyAmount = _getMonthlyAmount(patient);
+
+    // إنشاء controller للملاحظات إذا لم يكن موجوداً
+    if (!_notesControllers.containsKey(patient.name)) {
+      _notesControllers[patient.name] = TextEditingController();
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.grey.withOpacity(0.2),
           ),
         ),
       ),
+      child: Table(
+        columnWidths: const {
+          0: FlexColumnWidth(2.5),
+          1: FlexColumnWidth(2),
+          2: FlexColumnWidth(1.5),
+          3: FlexColumnWidth(2),
+          4: FlexColumnWidth(2),
+          5: FlexColumnWidth(2),
+          6: FlexColumnWidth(3),
+        },
+        children: [
+          TableRow(
+            children: [
+              _buildTableCell(patient.name, isName: true),
+              _buildTableCell(
+                  DateFormat('yyyy/MM/dd').format(patient.registrationDate)),
+              _buildOverdueDaysCell(overdueDays),
+              _buildAmountCell(remainingAmount, isRemaining: true),
+              _buildAmountCell(monthlyAmount),
+              _buildTableCell(patient.phoneNumber),
+              _buildNotesCell(patient.name),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildHeader(int overdueCount) {
-    return Card(
-      elevation: 10,
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE74C3C).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                FontAwesomeIcons.triangleExclamation,
-                size: 30,
-                color: Color(0xFFE74C3C),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'التسديدات المتأخرة',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: const Color(0xFFE74C3C),
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$overdueCount مريض لديه تسديدات متأخرة',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE74C3C).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '$overdueCount',
-                style: const TextStyle(
-                  color: Color(0xFFE74C3C),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-          ],
+  Widget _buildTableCell(String text, {bool isName = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isName ? FontWeight.w600 : FontWeight.normal,
+          color: isName ? const Color(0xFF649FCC) : Colors.black87,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildOverdueDaysCell(int days) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.withOpacity(0.3)),
+        ),
+        child: Text(
+          '$days يوم',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.red,
+          ),
+          textAlign: TextAlign.center,
         ),
       ),
     );
   }
 
-  Widget _buildSearchBar() {
-    return Card(
-      elevation: 5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
+  Widget _buildAmountCell(double amount, {bool isRemaining = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: Text(
+        '${amount.toStringAsFixed(0)} دينار',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isRemaining ? Colors.red : const Color(0xFF649FCC),
+        ),
+        textAlign: TextAlign.center,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    );
+  }
+
+  Widget _buildNotesCell(String patientName) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Container(
+        height: 35,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2EDE9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF649FCC).withOpacity(0.3)),
+        ),
         child: TextField(
-          controller: _searchController,
-          onChanged: (value) {
-            setState(() {
-              _searchQuery = value;
-            });
-          },
+          controller: _notesControllers[patientName],
           decoration: const InputDecoration(
-            hintText: 'البحث عن مريض...',
-            prefixIcon: Icon(
-              FontAwesomeIcons.magnifyingGlass,
-              color: Color(0xFF649FCC),
-            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(vertical: 12),
+            hintText: 'ملاحظة...',
+            hintStyle: TextStyle(fontSize: 11, color: Colors.grey),
           ),
+          style: const TextStyle(fontSize: 11),
+          maxLines: 1,
+          onChanged: (value) {
+            _saveNote(patientName, value);
+          },
+          onSubmitted: (value) {
+            _saveNote(patientName, value);
+          },
         ),
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return Card(
-      elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(40.0),
-        child: Column(
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: const Color(0xFF27AE60).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                FontAwesomeIcons.circleCheck,
-                size: 40,
-                color: Color(0xFF27AE60),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              _searchQuery.isEmpty
-                  ? 'لا توجد تسديدات متأخرة'
-                  : 'لا توجد نتائج للبحث',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: const Color(0xFF27AE60),
-                    fontWeight: FontWeight.bold,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _searchQuery.isEmpty
-                  ? 'جميع المرضى ملتزمون بمواعيد التسديد'
-                  : 'جرب البحث بكلمات مختلفة',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPatientsList(List<Patient> patients, AppProvider appProvider) {
-    return Column(
-      children: patients
-          .map((patient) => _buildPatientCard(patient, appProvider))
-          .toList(),
-    );
-  }
-
-  Widget _buildPatientCard(Patient patient, AppProvider appProvider) {
-    final patientPayments = appProvider.getPatientPayments(patient.name);
-    final totalPaid =
-        patientPayments.fold(0.0, (sum, payment) => sum + payment.amount);
-    final remainingAmount = patient.totalAmount - totalPaid;
-    final overdueMonths = _calculateOverdueMonths(patient);
-
-    return Card(
-      elevation: 8,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFFE74C3C).withOpacity(0.3),
-            width: 2,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // معلومات المريض الأساسية
-              Row(
-                children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE74C3C).withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      FontAwesomeIcons.user,
-                      color: Color(0xFFE74C3C),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          patient.name,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF2C3E50),
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'رقم الهاتف: ${patient.phoneNumber}',
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Colors.grey[600],
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE74C3C).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '$overdueMonths شهر متأخر',
-                      style: const TextStyle(
-                        color: Color(0xFFE74C3C),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // تفاصيل مالية
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8F9FA),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildFinancialRow(
-                      'المبلغ الإجمالي',
-                      '${patient.totalAmount.toStringAsFixed(0)} د.ع',
-                      FontAwesomeIcons.coins,
-                      const Color(0xFF3498DB),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildFinancialRow(
-                      'المبلغ المدفوع',
-                      '${totalPaid.toStringAsFixed(0)} د.ع',
-                      FontAwesomeIcons.circleCheck,
-                      const Color(0xFF27AE60),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildFinancialRow(
-                      'المبلغ المتبقي',
-                      '${remainingAmount.toStringAsFixed(0)} د.ع',
-                      FontAwesomeIcons.triangleExclamation,
-                      const Color(0xFFE74C3C),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // معلومات التقسيط
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildInfoChip(
-                      'إجمالي الأشهر',
-                      '${patient.totalMonths}',
-                      FontAwesomeIcons.calendar,
-                      const Color(0xFF9B59B6),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildInfoChip(
-                      'الأشهر المتبقية',
-                      '${patient.remainingMonths}',
-                      FontAwesomeIcons.clockRotateLeft,
-                      const Color(0xFFE67E22),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // أزرار العمليات
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showPaymentDialog(patient),
-                      icon: const Icon(FontAwesomeIcons.plus, size: 16),
-                      label: const Text('تسديد دفعة'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF27AE60),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          _showPaymentHistory(patient, patientPayments),
-                      icon: const Icon(FontAwesomeIcons.clockRotateLeft,
-                          size: 16),
-                      label: const Text('سجل المدفوعات'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF649FCC),
-                        side: const BorderSide(color: Color(0xFF649FCC)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFinancialRow(
-      String label, String value, IconData icon, Color color) {
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 16),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[700],
-            fontSize: 14,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInfoChip(
-      String label, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(40),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              FontAwesomeIcons.circleCheck,
+              color: Colors.green,
+              size: 40,
             ),
           ),
+          const SizedBox(height: 20),
           Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 12,
-            ),
+            'لا توجد تسديدات متأخرة',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'جميع المرضى ملتزمون بمواعيد التسديد',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -475,201 +438,102 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
     );
   }
 
-  void _showPaymentDialog(Patient patient) {
-    final amountController = TextEditingController();
-    final notesController = TextEditingController();
-    DateTime selectedDate = DateTime.now();
+  Widget _buildStatisticsCards(
+      List<Patient> overduePatients, List<Payment> payments) {
+    double totalRemainingAmount = 0;
+    double totalMonthlyAmount = 0;
 
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: Row(
-                children: [
-                  const Icon(
-                    FontAwesomeIcons.creditCard,
-                    color: Color(0xFF27AE60),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'تسديد دفعة - ${patient.name}',
-                      style: const TextStyle(
-                        color: Color(0xFF27AE60),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'مبلغ الدفعة (د.ع)',
-                        prefixIcon: Icon(FontAwesomeIcons.coins),
-                        hintText: 'أدخل مبلغ الدفعة',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: notesController,
-                      decoration: const InputDecoration(
-                        labelText: 'ملاحظات (اختياري)',
-                        prefixIcon: Icon(FontAwesomeIcons.noteSticky),
-                        hintText: 'أدخل أي ملاحظات إضافية',
-                      ),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      onTap: () async {
-                        final DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: selectedDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime.now(),
-                        );
-                        if (picked != null) {
-                          setState(() {
-                            selectedDate = picked;
-                          });
-                        }
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: const Color(0xFF649FCC).withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(FontAwesomeIcons.calendar,
-                                color: Color(0xFF649FCC), size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('إلغاء'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final amount =
-                        double.tryParse(amountController.text.trim());
-                    if (amount == null || amount <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('يرجى إدخال مبلغ صحيح'),
-                          backgroundColor: Colors.red[400],
-                        ),
-                      );
-                      return;
-                    }
-                    final payment = Payment(
-                      patientName: patient.name,
-                      amount: amount,
-                      paymentDate: selectedDate,
-                      notes: notesController.text.trim(),
-                    );
-                    final success =
-                        await Provider.of<AppProvider>(context, listen: false)
-                            .addPayment(payment);
-                    if (success) {
-                      Navigator.of(context).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('تم تسجيل الدفعة بنجاح'),
-                          backgroundColor: Colors.green[400],
-                        ),
-                      );
-                      setState(() {});
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('حدث خطأ أثناء إضافة الدفعة'),
-                          backgroundColor: Colors.red[400],
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text('تسجيل الدفعة'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    for (var patient in overduePatients) {
+      totalRemainingAmount += _getRemainingAmount(patient, payments);
+      totalMonthlyAmount += _getMonthlyAmount(patient);
+    }
+
+    return Row(
+      children: [
+        // كارت المبلغ المتبقي الكلي
+        Expanded(
+          child: _buildStatisticsCard(
+            title: 'المبلغ المتبقي الكلي',
+            amount: totalRemainingAmount,
+            icon: FontAwesomeIcons.triangleExclamation,
+            color: Colors.red,
+            backgroundColor: Colors.red.withOpacity(0.1),
+          ),
+        ),
+
+        const SizedBox(width: 16),
+
+        // كارت مجموع التسديد الشهري
+        Expanded(
+          child: _buildStatisticsCard(
+            title: 'مجموع التسديد الشهري',
+            amount: totalMonthlyAmount,
+            icon: FontAwesomeIcons.coins,
+            color: const Color(0xFF649FCC),
+            backgroundColor: const Color(0xFF649FCC).withOpacity(0.1),
+          ),
+        ),
+      ],
     );
   }
 
-  void _showPaymentHistory(Patient patient, List<Payment> payments) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('سجل المدفوعات - ${patient.name}'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: payments.isEmpty
-              ? const Text('لا توجد مدفوعات لهذا المريض.')
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: payments.length,
-                  itemBuilder: (context, index) {
-                    final payment = payments[index];
-                    return ListTile(
-                      leading: const Icon(FontAwesomeIcons.coins,
-                          color: Color(0xFF3498DB)),
-                      title: Text('${payment.amount.toStringAsFixed(0)} د.ع'),
-                      subtitle: Text(
-                        '${payment.paymentDate.year}-${payment.paymentDate.month.toString().padLeft(2, '0')}-${payment.paymentDate.day.toString().padLeft(2, '0')}'
-                        '${payment.notes.isNotEmpty ? '\nملاحظة: ${payment.notes}' : ''}',
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('إغلاق'),
+  Widget _buildStatisticsCard({
+    required String title,
+    required double amount,
+    required IconData icon,
+    required Color color,
+    required Color backgroundColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${amount.toStringAsFixed(0)} دينار',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
-  }
-
-  int _calculateOverdueMonths(Patient patient) {
-    // يمكنك تعديل المنطق حسب الحاجة
-    return patient.remainingMonths;
-  }
-
-  List<Patient> _filterPatients(List<Patient> patients) {
-    if (_searchQuery.isEmpty) return patients;
-    return patients.where((p) => p.name.contains(_searchQuery)).toList();
   }
 }

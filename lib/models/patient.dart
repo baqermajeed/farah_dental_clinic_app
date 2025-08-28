@@ -1,13 +1,16 @@
 class Patient {
+  int get installmentMonths => totalMonths;
   final int? id;
   final String name;
   final double totalAmount;
   final int totalMonths;
   final String phoneNumber;
+  final String address;
+  final String treatmentType;
   final DateTime registrationDate;
   final double paidAmount;
-  final String address;
-  final String treatmentType; // <--- ضفنا هذا
+  final int paymentDayOfMonth;
+  final String notes;
 
   Patient({
     this.id,
@@ -15,31 +18,34 @@ class Patient {
     required this.totalAmount,
     required this.totalMonths,
     required this.phoneNumber,
+    required this.address,
+    required this.treatmentType,
     required this.registrationDate,
     this.paidAmount = 0.0,
-    this.address = '',
-    this.treatmentType = '', // افتراضي فارغ
+    this.paymentDayOfMonth = 1,
+    this.notes = '',
   });
 
-  // المبلغ المتبقي
+  double get monthlyAmount => totalMonths > 0 ? totalAmount / totalMonths : 0;
+
   double get remainingAmount => totalAmount - paidAmount;
 
-  // المبلغ الشهري
-  double get monthlyAmount => totalAmount / totalMonths;
-
-  // الأشهر المتبقية
   int get remainingMonths {
+    if (monthlyAmount == 0) return 0;
     final paidMonths = (paidAmount / monthlyAmount).floor();
     return totalMonths - paidMonths;
   }
 
-  // تاريخ التسديد القادم
   DateTime get nextPaymentDate {
+    if (monthlyAmount == 0) return registrationDate;
     final paidMonths = (paidAmount / monthlyAmount).floor();
-    return registrationDate.add(Duration(days: 30 * (paidMonths + 1)));
+    return DateTime(
+      registrationDate.year,
+      registrationDate.month + paidMonths + 1,
+      paymentDayOfMonth,
+    );
   }
 
-  // تحويل إلى Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -47,40 +53,44 @@ class Patient {
       'totalAmount': totalAmount,
       'totalMonths': totalMonths,
       'phoneNumber': phoneNumber,
+      'address': address,
+      'treatmentType': treatmentType,
       'registrationDate': registrationDate.millisecondsSinceEpoch,
       'paidAmount': paidAmount,
-      'address': address,
-      'treatmentType': treatmentType, // <--- ضفنا هذا
+      'paymentDayOfMonth': paymentDayOfMonth,
+      'notes': notes,
     };
   }
 
-  // إنشاء من Map
   factory Patient.fromMap(Map<String, dynamic> map) {
     return Patient(
       id: map['id'],
       name: map['name'],
-      totalAmount: (map['totalAmount'] as num).toDouble(),
+      totalAmount: map['totalAmount'],
       totalMonths: map['totalMonths'],
       phoneNumber: map['phoneNumber'],
+      address: map['address'] ?? '',
+      treatmentType: map['treatmentType'] ?? '',
       registrationDate:
           DateTime.fromMillisecondsSinceEpoch(map['registrationDate']),
-      paidAmount: (map['paidAmount'] ?? 0.0).toDouble(),
-      address: map['address'] ?? '',
-      treatmentType: map['treatmentType'] ?? '', // <--- ضفنا هذا
+      paidAmount: map['paidAmount'] ?? 0.0,
+      paymentDayOfMonth: map['paymentDayOfMonth'] ?? 1,
+      notes: map['notes'] ?? '',
     );
   }
 
-  // نسخة مع تعديل
   Patient copyWith({
     int? id,
     String? name,
     double? totalAmount,
     int? totalMonths,
     String? phoneNumber,
-    DateTime? registrationDate,
-    double? paidAmount,
     String? address,
     String? treatmentType,
+    DateTime? registrationDate,
+    double? paidAmount,
+    int? paymentDayOfMonth,
+    String? notes,
   }) {
     return Patient(
       id: id ?? this.id,
@@ -88,10 +98,12 @@ class Patient {
       totalAmount: totalAmount ?? this.totalAmount,
       totalMonths: totalMonths ?? this.totalMonths,
       phoneNumber: phoneNumber ?? this.phoneNumber,
-      registrationDate: registrationDate ?? this.registrationDate,
-      paidAmount: paidAmount ?? this.paidAmount,
       address: address ?? this.address,
       treatmentType: treatmentType ?? this.treatmentType,
+      registrationDate: registrationDate ?? this.registrationDate,
+      paidAmount: paidAmount ?? this.paidAmount,
+      paymentDayOfMonth: paymentDayOfMonth ?? this.paymentDayOfMonth,
+      notes: notes ?? this.notes,
     );
   }
 }

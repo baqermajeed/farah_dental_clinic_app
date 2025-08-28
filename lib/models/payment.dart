@@ -3,14 +3,14 @@ class Payment {
   final String patientName;
   final double amount;
   final DateTime paymentDate;
-  final String notes; // <-- أضفنا هذا
+  final String notes;
 
   Payment({
     this.id,
     required this.patientName,
     required this.amount,
     required this.paymentDate,
-    this.notes = '', // نخليها اختيارية (افتراضي فارغ)
+    this.notes = '',
   });
 
   // تحويل إلى Map للحفظ في قاعدة البيانات
@@ -20,7 +20,7 @@ class Payment {
       'patientName': patientName,
       'amount': amount,
       'paymentDate': paymentDate.millisecondsSinceEpoch,
-      'notes': notes, // <-- أضفنا هذا
+      'notes': notes,
     };
   }
 
@@ -29,9 +29,9 @@ class Payment {
     return Payment(
       id: map['id'],
       patientName: map['patientName'],
-      amount: (map['amount'] as num).toDouble(),
+      amount: map['amount'],
       paymentDate: DateTime.fromMillisecondsSinceEpoch(map['paymentDate']),
-      notes: map['notes'] ?? '', // <-- أضفنا هذا
+      notes: map['notes'] ?? '',
     );
   }
 }

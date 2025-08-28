@@ -17,6 +17,8 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
   final _amountController = TextEditingController();
   final _monthsController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _treatmentController = TextEditingController();
 
   bool _isLoading = false;
   DateTime _selectedDate = DateTime.now();
@@ -27,6 +29,8 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
     _amountController.dispose();
     _monthsController.dispose();
     _phoneController.dispose();
+    _addressController.dispose();
+    _treatmentController.dispose();
     super.dispose();
   }
 
@@ -42,6 +46,8 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
       totalAmount: double.parse(_amountController.text),
       totalMonths: int.parse(_monthsController.text),
       phoneNumber: _phoneController.text.trim(),
+      address: _addressController.text.trim(),
+      treatmentType: _treatmentController.text.trim(),
       registrationDate: _selectedDate,
     );
 
@@ -316,38 +322,54 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
               ),
         ),
         const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFD0EBFF).withOpacity(0.3),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: const Color(0xFF649FCC).withOpacity(0.3),
+        InkWell(
+          onTap: () async {
+            DateTime? pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _selectedDate,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+
+            if (pickedDate != null) {
+              setState(() {
+                _selectedDate = pickedDate;
+              });
+            }
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD0EBFF).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: const Color(0xFF649FCC).withOpacity(0.3),
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                FontAwesomeIcons.calendarDays,
-                color: Color(0xFF649FCC),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: const Color(0xFF2C3E50),
-                      fontWeight: FontWeight.w500,
-                    ),
-              ),
-              const Spacer(),
-              Text(
-                '(تلقائي)',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-              ),
-            ],
+            child: Row(
+              children: [
+                const Icon(
+                  FontAwesomeIcons.calendarDays,
+                  color: Color(0xFF649FCC),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: const Color(0xFF2C3E50),
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+                const Spacer(),
+                Text(
+                  '(قابل للتعديل)',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey[600],
+                      ),
+                ),
+              ],
+            ),
           ),
         ),
       ],

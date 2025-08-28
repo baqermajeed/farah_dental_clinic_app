@@ -17,13 +17,14 @@ class DatabaseService {
 
     return await openDatabase(
       dbPath,
-      version: 1,
+      version: 4, // نسخة جديدة تشمل كل الأعمدة
       onCreate: _createDatabase,
+      onUpgrade: _upgradeDatabase,
     );
   }
 
   Future<void> _createDatabase(Database db, int version) async {
-    // إنشاء جدول المرضى
+    // جدول المرضى
     await db.execute('''
       CREATE TABLE patients (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,20 +32,41 @@ class DatabaseService {
         totalAmount REAL NOT NULL,
         totalMonths INTEGER NOT NULL,
         phoneNumber TEXT NOT NULL,
+        address TEXT,
+        treatmentType TEXT,
         registrationDate INTEGER NOT NULL,
-        paidAmount REAL DEFAULT 0.0
+        paidAmount REAL DEFAULT 0.0,
+        paymentDayOfMonth INTEGER,
+        notes TEXT
       )
     ''');
 
-    // إنشاء جدول المدفوعات
+    // جدول المدفوعات
     await db.execute('''
       CREATE TABLE payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         patientName TEXT NOT NULL,
         amount REAL NOT NULL,
-        paymentDate INTEGER NOT NULL
+        paymentDate INTEGER NOT NULL,
+        notes TEXT
       )
     ''');
+  }
+
+  Future<void> _upgradeDatabase(
+      Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute("ALTER TABLE patients ADD COLUMN address TEXT;");
+      await db.execute("ALTER TABLE patients ADD COLUMN treatmentType TEXT;");
+    }
+    if (oldVersion < 3) {
+      await db.execute("ALTER TABLE payments ADD COLUMN notes TEXT;");
+    }
+    if (oldVersion < 4) {
+      await db.execute(
+          "ALTER TABLE patients ADD COLUMN paymentDayOfMonth INTEGER;");
+      await db.execute("ALTER TABLE patients ADD COLUMN notes TEXT;");
+    }
   }
 
   // إدراج مريض جديد
@@ -58,9 +80,7 @@ class DatabaseService {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('patients');
 
-    return List.generate(maps.length, (i) {
-      return Patient.fromMap(maps[i]);
-    });
+    return List.generate(maps.length, (i) => Patient.fromMap(maps[i]));
   }
 
   // تحديث بيانات مريض
@@ -77,43 +97,37 @@ class DatabaseService {
   // إدراج دفعة جديدة
   Future<int> insertPayment(Payment payment) async {
     final db = await database;
-
-    // إدراج الدفعة
-    final paymentId = await db.insert('payments', payment.toMap());
-
-    // تحديث المبلغ المدفوع للمريض
-    await _updatePatientPaidAmount(payment.patientName);
-
-    return paymentId;
+    return await db.transaction((txn) async {
+      final paymentId = await txn.insert('payments', payment.toMap());
+      await _updatePatientPaidAmountInTransaction(txn, payment.patientName);
+      return paymentId;
+    });
   }
 
   // الحصول على جميع المدفوعات
   Future<List<Payment>> getPayments() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'payments',
-      orderBy: 'paymentDate DESC',
-    );
-
-    return List.generate(maps.length, (i) {
-      return Payment.fromMap(maps[i]);
-    });
+    final List<Map<String, dynamic>> maps =
+        await db.query('payments', orderBy: 'paymentDate DESC');
+    return List.generate(maps.length, (i) => Payment.fromMap(maps[i]));
   }
 
   // تحديث المبلغ المدفوع للمريض
   Future<void> _updatePatientPaidAmount(String patientName) async {
     final db = await database;
+    await _updatePatientPaidAmountInTransaction(db, patientName);
+  }
 
-    // حساب إجمالي المبلغ المدفوع
+  Future<void> _updatePatientPaidAmountInTransaction(
+      DatabaseExecutor db, String patientName) async {
     final result = await db.rawQuery('''
-      SELECT SUM(amount) as totalPaid 
-      FROM payments 
+      SELECT SUM(amount) as totalPaid
+      FROM payments
       WHERE patientName = ?
     ''', [patientName]);
 
     final totalPaid = result.first['totalPaid'] as double? ?? 0.0;
 
-    // تحديث المريض
     await db.update(
       'patients',
       {'paidAmount': totalPaid},
@@ -131,9 +145,6 @@ class DatabaseService {
       whereArgs: [patientName],
       orderBy: 'paymentDate DESC',
     );
-
-    return List.generate(maps.length, (i) {
-      return Payment.fromMap(maps[i]);
-    });
+    return List.generate(maps.length, (i) => Payment.fromMap(maps[i]));
   }
 }

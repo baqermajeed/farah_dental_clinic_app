@@ -4,7 +4,19 @@ import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'providers/app_provider.dart';
 
-void main() {
+// 👇 مضافة حتى يدعم Windows/Linux
+import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // تهيئة قاعدة البيانات إذا كان النظام Windows أو Linux
+  if (Platform.isWindows || Platform.isLinux) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
   runApp(const DentalClinicApp());
 }
 
@@ -20,17 +32,17 @@ class DentalClinicApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           // الألوان الرئيسية
-          primarySwatch: MaterialColor(0xFF649FCC, {
-            50: const Color(0xFFE3F2FD),
-            100: const Color(0xFFBBDEFB),
-            200: const Color(0xFF90CAF9),
-            300: const Color(0xFF64B5F6),
-            400: const Color(0xFF42A5F5),
-            500: const Color(0xFF649FCC),
-            600: const Color(0xFF1E88E5),
-            700: const Color(0xFF1976D2),
-            800: const Color(0xFF1565C0),
-            900: const Color(0xFF0D47A1),
+          primarySwatch: const MaterialColor(0xFF649FCC, {
+            50: Color(0xFFE3F2FD),
+            100: Color(0xFFBBDEFB),
+            200: Color(0xFF90CAF9),
+            300: Color(0xFF64B5F6),
+            400: Color(0xFF42A5F5),
+            500: Color(0xFF649FCC),
+            600: Color(0xFF1E88E5),
+            700: Color(0xFF1976D2),
+            800: Color(0xFF1565C0),
+            900: Color(0xFF0D47A1),
           }),
 
           // الألوان المخصصة
@@ -153,14 +165,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
         if (appProvider.isLoading) {
           return Scaffold(
             body: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    const Color(0xFF649FCC),
-                    const Color(0xFFD0EBFF),
-                    const Color(0xFFF2EDE9),
+                    Color(0xFF649FCC),
+                    Color(0xFFD0EBFF),
+                    Color(0xFFF2EDE9),
                   ],
                 ),
               ),
