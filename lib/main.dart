@@ -4,19 +4,8 @@ import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'providers/app_provider.dart';
 
-// 👇 مضافة حتى يدعم Windows/Linux
-import 'dart:io';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // تهيئة قاعدة البيانات إذا كان النظام Windows أو Linux
-  if (Platform.isWindows || Platform.isLinux) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
-
   runApp(const DentalClinicApp());
 }
 
@@ -31,94 +20,132 @@ class DentalClinicApp extends StatelessWidget {
         title: 'عيادة فرح لطب الأسنان',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          // الألوان الرئيسية
-          primarySwatch: const MaterialColor(0xFF649FCC, {
-            50: Color(0xFFE3F2FD),
-            100: Color(0xFFBBDEFB),
-            200: Color(0xFF90CAF9),
-            300: Color(0xFF64B5F6),
-            400: Color(0xFF42A5F5),
-            500: Color(0xFF649FCC),
-            600: Color(0xFF1E88E5),
-            700: Color(0xFF1976D2),
-            800: Color(0xFF1565C0),
-            900: Color(0xFF0D47A1),
-          }),
-
-          // الألوان المخصصة
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF649FCC),
-            primary: const Color(0xFF649FCC),
-            secondary: const Color(0xFFD0EBFF),
-            surface: const Color(0xFFF2EDE9),
-            background: const Color(0xFFF2EDE9),
+          useMaterial3: true,
+          
+          // الألوان الجديدة البسيطة
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFF649FCC),
+            secondary: Color(0xFFD0EBFF),
+            surface: Color(0xFFF2EDE9),
+            onPrimary: Colors.white,
+            onSecondary: Color(0xFF649FCC),
+            onSurface: Color(0xFF2C3E50),
           ),
 
           // الخطوط
-          fontFamily: 'Cairo',
+          fontFamily: 'Segoe UI', // استخدام Segoe UI التي تدعم العربية بشكل جيد
           textTheme: const TextTheme(
             headlineLarge: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
               color: Color(0xFF2C3E50),
             ),
             headlineMedium: TextStyle(
-              fontSize: 24,
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF2C3E50),
+            ),
+            titleLarge: TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.w600,
               color: Color(0xFF2C3E50),
             ),
             bodyLarge: TextStyle(
               fontSize: 16,
+              fontWeight: FontWeight.w400,
               color: Color(0xFF34495E),
             ),
             bodyMedium: TextStyle(
               fontSize: 14,
+              fontWeight: FontWeight.w400,
               color: Color(0xFF34495E),
             ),
           ),
 
-          // تصميم الأزرار
+          // تصميم الأزرار البسيط
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF649FCC),
               foregroundColor: Colors.white,
-              elevation: 8,
-              shadowColor: const Color(0xFF649FCC).withOpacity(0.3),
+              elevation: 2,
+              shadowColor: const Color(0xFF649FCC).withValues(alpha: 0.2),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
 
-          // تصميم حقول الإدخال
+          // تصميم حقول الإدخال البسيط
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: const BorderSide(color: Color(0xFF649FCC)),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFD0EBFF),
+                width: 1,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: const BorderSide(color: Color(0xFFD0EBFF)),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFD0EBFF),
+                width: 1,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: const BorderSide(color: Color(0xFF649FCC), width: 2),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFF649FCC),
+                width: 2,
+              ),
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Colors.red,
+                width: 1,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Colors.red,
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            labelStyle: const TextStyle(
+              color: Color(0xFF649FCC),
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
+            hintStyle: TextStyle(
+              color: Colors.grey.withValues(alpha: 0.6),
+              fontWeight: FontWeight.w400,
+              fontSize: 14,
+            ),
+            prefixIconColor: const Color(0xFF649FCC),
+            suffixIconColor: const Color(0xFF649FCC),
           ),
 
-          // تصميم البطاقات
+          // تصميم البطاقات البسيط
           cardTheme: CardThemeData(
-            elevation: 8,
-            shadowColor: const Color(0xFF649FCC).withOpacity(0.2),
+            elevation: 4,
+            shadowColor: Colors.black.withValues(alpha: 0.1),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
             ),
             color: Colors.white,
+            margin: const EdgeInsets.all(8),
           ),
 
           // شريط التطبيق
@@ -128,9 +155,10 @@ class DentalClinicApp extends StatelessWidget {
             elevation: 0,
             centerTitle: true,
             titleTextStyle: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
               color: Colors.white,
+              fontFamily: 'Cairo',
             ),
           ),
         ),

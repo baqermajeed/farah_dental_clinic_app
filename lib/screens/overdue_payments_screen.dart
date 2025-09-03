@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/patient.dart';
 import '../models/payment.dart';
+import '../utils/whatsapp_helper.dart';
 
 class OverduePaymentsScreen extends StatefulWidget {
   const OverduePaymentsScreen({super.key});
@@ -14,8 +14,8 @@ class OverduePaymentsScreen extends StatefulWidget {
 }
 
 class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
-  Map<String, TextEditingController> _notesControllers = {};
-  Map<String, String> _savedNotes = {}; // لحفظ الملاحظات
+  final Map<String, TextEditingController> _notesControllers = {};
+  final Map<String, String> _savedNotes = {}; // لحفظ الملاحظات
 
   @override
   void dispose() {
@@ -25,42 +25,55 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
     super.dispose();
   }
 
-  // حفظ الملاحظة
-  void _saveNote(String patientName, String note) {
-    setState(() {
-      _savedNotes[patientName] = note;
-    });
-    // هنا يمكن إضافة كود لحفظ الملاحظة في قاعدة البيانات
-  }
-
   // حساب عدد الأيام المتأخرة
   int _calculateOverdueDays(Patient patient, List<Payment> payments) {
     final patientPayments =
         payments.where((p) => p.patientName == patient.name).toList();
-    patientPayments.sort((a, b) => a.paymentDate.compareTo(b.paymentDate));
 
-    // حساب عدد الأشهر المنقضية منذ التسجيل
-    final monthsSinceRegistration =
-        DateTime.now().difference(patient.registrationDate).inDays ~/ 30;
+    // حساب إجمالي المبلغ المدفوع
+    final totalPaid =
+        patientPayments.fold<double>(0, (sum, payment) => sum + payment.amount);
 
-    // عدد الدفعات المطلوبة حتى الآن
-    final expectedPayments = monthsSinceRegistration;
+    // إذا سدد كامل المبلغ، فلا يوجد تأخير
+    if (totalPaid >= patient.totalAmount) {
+      return 0;
+    }
 
-    // عدد الدفعات الفعلية
-    final actualPayments = patientPayments.length;
+    // حساب عدد الأشهر المنقضية منذ التسجيل بطريقة أكثر دقة
+    final now = DateTime.now();
+    final registrationDate = patient.registrationDate ?? DateTime.now();
 
-    if (actualPayments < expectedPayments && expectedPayments > 0) {
-      // حساب تاريخ آخر دفعة مطلوبة
-      final lastExpectedPaymentDate = DateTime(
-        patient.registrationDate.year,
-        patient.registrationDate.month + expectedPayments,
-        patient.registrationDate.day,
+    int monthsPassed = (now.year - registrationDate.year) * 12 +
+        (now.month - registrationDate.month);
+
+    // إذا لم يكمل الشهر الحالي بعد، نقلل شهر واحد
+    if (now.day < registrationDate.day) {
+      monthsPassed--;
+    }
+
+    // إذا لم يمر شهر كامل بعد، لا يوجد تأخير
+    if (monthsPassed <= 0) {
+      return 0;
+    }
+
+    // حساب المبلغ المطلوب دفعه حتى الآن
+    final monthlyAmount = patient.totalAmount / patient.totalMonths;
+    final expectedAmountTillNow = monthlyAmount * monthsPassed;
+
+    // إذا كان المبلغ المدفوع أقل من المطلوب
+    if (totalPaid < expectedAmountTillNow) {
+      // حساب عدد الأشهر المتأخرة
+      final shortfall = expectedAmountTillNow - totalPaid;
+      final monthsOverdue = (shortfall / monthlyAmount).ceil();
+
+      // حساب تاريخ الدفعة المتأخرة الأولى
+      final firstOverdueDate = DateTime(
+        registrationDate.year,
+        registrationDate.month + (monthsPassed - monthsOverdue + 1),
+        registrationDate.day,
       );
 
-      // إذا كان التاريخ الحالي بعد تاريخ الدفعة المطلوبة
-      if (DateTime.now().isAfter(lastExpectedPaymentDate)) {
-        return DateTime.now().difference(lastExpectedPaymentDate).inDays;
-      }
+      return now.difference(firstOverdueDate).inDays;
     }
 
     return 0;
@@ -86,7 +99,136 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
 
   // حساب المبلغ الشهري
   double _getMonthlyAmount(Patient patient) {
-    return patient.totalAmount / patient.installmentMonths;
+    return patient.totalAmount / patient.totalMonths;
+  }
+
+  // طباعة معلومات التشخيص
+  void _printDebugInfo(List<Patient> patients, List<Payment> payments) {
+    print('=== معلومات تشخيص التسديدات المتأخرة ===');
+    print('عدد المرضى: ${patients.length}');
+    print('عدد الدفعات: ${payments.length}');
+
+    for (var patient in patients) {
+      final patientPayments =
+          payments.where((p) => p.patientName == patient.name).toList();
+      final totalPaid = patientPayments.fold<double>(
+          0, (sum, payment) => sum + payment.amount);
+      final overdueDays = _calculateOverdueDays(patient, payments);
+      final monthlyAmount = _getMonthlyAmount(patient);
+
+      final now = DateTime.now();
+      final registrationDate = patient.registrationDate ?? DateTime.now();
+      int monthsPassed = (now.year - registrationDate.year) * 12 +
+          (now.month - registrationDate.month);
+      if (now.day < registrationDate.day) {
+        monthsPassed--;
+      }
+      final expectedAmount = monthlyAmount * monthsPassed;
+
+      print('\\n--- المريض: ${patient.name} ---');
+      print(
+          'تاريخ التسجيل: ${DateFormat('yyyy-MM-dd').format(patient.registrationDate ?? DateTime.now())}');
+      print('المبلغ الإجمالي: ${patient.totalAmount}');
+      print('عدد الأشهر الإجمالي: ${patient.totalMonths}');
+      print('المبلغ الشهري: ${monthlyAmount.toStringAsFixed(2)}');
+      print('الأشهر المنقضية: $monthsPassed');
+      print('المبلغ المطلوب حتى الآن: ${expectedAmount.toStringAsFixed(2)}');
+      print('المبلغ المدفوع: ${totalPaid.toStringAsFixed(2)}');
+      print('عدد الدفعات: ${patientPayments.length}');
+      print('عدد الأيام المتأخرة: $overdueDays');
+      print('هل متأخر؟ ${overdueDays > 0 ? 'نعم' : 'لا'}');
+    }
+    print('===============================');
+  }
+
+  // عرض معلومات التشخيص في نافذة
+  void _showDebugInfo(BuildContext context) {
+    final appProvider = context.read<AppProvider>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('معلومات التشخيص'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('عدد المرضى: ${appProvider.patients.length}'),
+                Text('عدد الدفعات: ${appProvider.payments.length}'),
+                const Divider(),
+                ...appProvider.patients.map((patient) {
+                  final patientPayments = appProvider.payments
+                      .where((p) => p.patientName == patient.name)
+                      .toList();
+                  final totalPaid = patientPayments.fold<double>(
+                      0, (sum, payment) => sum + payment.amount);
+                  final overdueDays =
+                      _calculateOverdueDays(patient, appProvider.payments);
+                  final monthlyAmount = _getMonthlyAmount(patient);
+
+                  final now = DateTime.now();
+                  final registrationDate =
+                      patient.registrationDate ?? DateTime.now();
+                  int monthsPassed = (now.year - registrationDate.year) * 12 +
+                      (now.month - registrationDate.month);
+                  if (now.day < registrationDate.day) {
+                    monthsPassed--;
+                  }
+                  final expectedAmount = monthlyAmount * monthsPassed;
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            patient.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 20),
+                          ),
+                          Text(
+                              'تاريخ التسجيل: ${DateFormat('yyyy-MM-dd').format(patient.registrationDate ?? DateTime.now())}'),
+                          Text('المبلغ الإجمالي: ${patient.totalAmount} دينار'),
+                          Text('عدد الأشهر: ${patient.totalMonths}'),
+                          Text(
+                              'المبلغ الشهري: ${monthlyAmount.toStringAsFixed(2)} دينار'),
+                          Text('الأشهر المنقضية: $monthsPassed'),
+                          Text(
+                              'المبلغ المطلوب: ${expectedAmount.toStringAsFixed(2)} دينار'),
+                          Text(
+                              'المبلغ المدفوع: ${totalPaid.toStringAsFixed(2)} دينار'),
+                          Text('عدد الدفعات: ${patientPayments.length}'),
+                          Text(
+                            'عدد الأيام المتأخرة: $overdueDays',
+                            style: TextStyle(
+                              color:
+                                  overdueDays > 0 ? Colors.red : Colors.green,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'cairo',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -94,38 +236,63 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF2EDE9),
       appBar: AppBar(
-        title: const Text(
-          'التسديدات المتأخرة للمراجعين',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color(0xFF649FCC),
+        toolbarHeight: 80, // ارتفاع AppBar
+        backgroundColor: const Color.fromARGB(255, 30, 84, 120),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        title: const Center(
+          child: Text(
+            'التسديدات المتأخرة للمراجعين',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontFamily: 'Cairo',
+              fontSize: 20,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.white, size: 30),
+            onPressed: () => _showDebugInfo(context),
+          ),
+        ],
       ),
       body: Consumer<AppProvider>(
         builder: (context, appProvider, child) {
-          final overduePatients =
-              _getOverduePatients(appProvider.patients, appProvider.payments);
+          return FutureBuilder<List<Patient>>(
+            future: appProvider.getOverduePatients(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: Color.fromARGB(255, 30, 84, 120),
+                  ),
+                );
+              }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                // الجدول الرئيسي
-                _buildOverdueTable(overduePatients, appProvider.payments),
+              final overduePatients = snapshot.data ?? [];
 
-                const SizedBox(height: 24),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // الجدول الرئيسي
+                    _buildOverdueTable(overduePatients, appProvider.payments),
 
-                // كارتات الإحصائيات
-                _buildStatisticsCards(overduePatients, appProvider.payments),
-              ],
-            ),
+                    const SizedBox(height: 24),
+
+                    // كارتات الإحصائيات
+                    _buildStatisticsCards(
+                        overduePatients, appProvider.payments),
+                  ],
+                ),
+              );
+            },
           );
         },
       ),
@@ -156,7 +323,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: Color(0xFF649FCC),
+              color: Color.fromARGB(255, 30, 84, 120),
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -165,17 +332,18 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
             child: Row(
               children: [
                 const Icon(
-                  FontAwesomeIcons.triangleExclamation,
+                  Icons.warning,
                   color: Colors.white,
-                  size: 20,
+                  size: 30,
                 ),
                 const SizedBox(width: 8),
                 const Text(
                   'المراجعين المتأخرين في التسديد',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
                   ),
                 ),
                 const Spacer(),
@@ -190,8 +358,9 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
                     '${overduePatients.length} مريض',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 14,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
                     ),
                   ),
                 ),
@@ -224,7 +393,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
                     _buildTableHeader('المبلغ المتبقي'),
                     _buildTableHeader('القسط المستحق'),
                     _buildTableHeader('رقم الهاتف'),
-                    _buildTableHeader('الملاحظة'),
+                    _buildTableHeader('تواصل واتساب'),
                   ],
                 ),
               ],
@@ -236,7 +405,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
             final index = entry.key;
             final patient = entry.value;
             return _buildTableRow(patient, payments, index);
-          }).toList(),
+          }),
         ],
       ),
     );
@@ -244,13 +413,14 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
 
   Widget _buildTableHeader(String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       child: Text(
         text,
         style: const TextStyle(
-          fontSize: 13,
+          fontSize: 20,
           fontWeight: FontWeight.bold,
           color: Color(0xFF649FCC),
+          fontFamily: 'Cairo',
         ),
         textAlign: TextAlign.center,
       ),
@@ -289,13 +459,14 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
           TableRow(
             children: [
               _buildTableCell(patient.name, isName: true),
-              _buildTableCell(
-                  DateFormat('yyyy/MM/dd').format(patient.registrationDate)),
+              _buildTableCell(DateFormat('yyyy/MM/dd')
+                  .format(patient.registrationDate ?? DateTime.now())),
               _buildOverdueDaysCell(overdueDays),
               _buildAmountCell(remainingAmount, isRemaining: true),
               _buildAmountCell(monthlyAmount),
               _buildTableCell(patient.phoneNumber),
-              _buildNotesCell(patient.name),
+              _buildWhatsAppCell(
+                  patient, remainingAmount, monthlyAmount, overdueDays),
             ],
           ),
         ],
@@ -305,11 +476,12 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
 
   Widget _buildTableCell(String text, {bool isName = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 20,
+          fontFamily: 'Cairo',
           fontWeight: isName ? FontWeight.w600 : FontWeight.normal,
           color: isName ? const Color(0xFF649FCC) : Colors.black87,
         ),
@@ -331,7 +503,8 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
         child: Text(
           '$days يوم',
           style: const TextStyle(
-            fontSize: 12,
+            fontSize: 20,
+            fontFamily: 'Cairo',
             fontWeight: FontWeight.bold,
             color: Colors.red,
           ),
@@ -347,7 +520,8 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
       child: Text(
         '${amount.toStringAsFixed(0)} دينار',
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 20,
+          fontFamily: 'cairo',
           fontWeight: FontWeight.w600,
           color: isRemaining ? Colors.red : const Color(0xFF649FCC),
         ),
@@ -356,32 +530,97 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
     );
   }
 
-  Widget _buildNotesCell(String patientName) {
+  // إرسال رسالة واتساب للتذكير بالتسديد
+  Future<void> _sendWhatsAppReminder(Patient patient, double remainingAmount,
+      double monthlyAmount, int overdueDays) async {
+    try {
+      final success = await WhatsAppHelper.sendOverduePaymentReminder(
+        patient: patient,
+        remainingAmount: remainingAmount,
+        monthlyAmount: monthlyAmount,
+        overdueDays: overdueDays,
+      );
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم فتح الواتساب لإرسال رسالة للمريض ${patient.name}',
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 16,
+                ),
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'حدث خطأ في فتح الواتساب. تأكد من أن الواتساب مثبت على الجهاز',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 16,
+                ),
+              ),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'حدث خطأ: $e',
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 16,
+              ),
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // زر الواتساب للتواصل مع المريض
+  Widget _buildWhatsAppCell(Patient patient, double remainingAmount,
+      double monthlyAmount, int overdueDays) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Container(
-        height: 35,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2EDE9),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF649FCC).withOpacity(0.3)),
-        ),
-        child: TextField(
-          controller: _notesControllers[patientName],
-          decoration: const InputDecoration(
-            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            border: InputBorder.none,
-            hintText: 'ملاحظة...',
-            hintStyle: TextStyle(fontSize: 11, color: Colors.grey),
+      child: Center(
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF25D366), // لون الواتساب الأخضر
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF25D366).withOpacity(0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          style: const TextStyle(fontSize: 11),
-          maxLines: 1,
-          onChanged: (value) {
-            _saveNote(patientName, value);
-          },
-          onSubmitted: (value) {
-            _saveNote(patientName, value);
-          },
+          child: IconButton(
+            icon: const Icon(
+              Icons.chat,
+              color: Colors.white,
+              size: 30,
+            ),
+            onPressed: () => _sendWhatsAppReminder(
+                patient, remainingAmount, monthlyAmount, overdueDays),
+            tooltip: 'إرسال رسالة تذكير عبر الواتساب',
+          ),
         ),
       ),
     );
@@ -411,7 +650,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
               shape: BoxShape.circle,
             ),
             child: const Icon(
-              FontAwesomeIcons.circleCheck,
+              Icons.check_circle,
               color: Colors.green,
               size: 40,
             ),
@@ -455,7 +694,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
           child: _buildStatisticsCard(
             title: 'المبلغ المتبقي الكلي',
             amount: totalRemainingAmount,
-            icon: FontAwesomeIcons.triangleExclamation,
+            icon: Icons.warning,
             color: Colors.red,
             backgroundColor: Colors.red.withOpacity(0.1),
           ),
@@ -468,7 +707,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
           child: _buildStatisticsCard(
             title: 'مجموع التسديد الشهري',
             amount: totalMonthlyAmount,
-            icon: FontAwesomeIcons.coins,
+            icon: Icons.attach_money,
             color: const Color(0xFF649FCC),
             backgroundColor: const Color(0xFF649FCC).withOpacity(0.1),
           ),
@@ -509,14 +748,15 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
             child: Icon(
               icon,
               color: color,
-              size: 28,
+              size: 30,
             ),
           ),
           const SizedBox(height: 16),
           Text(
             title,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 20,
+              fontFamily: 'Cairo',
               fontWeight: FontWeight.w600,
               color: Colors.grey[700],
             ),
@@ -526,7 +766,8 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
           Text(
             '${amount.toStringAsFixed(0)} دينار',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 20,
+              fontFamily: 'Cairo',
               fontWeight: FontWeight.bold,
               color: color,
             ),

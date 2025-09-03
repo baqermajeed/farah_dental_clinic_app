@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/app_provider.dart';
 import '../models/patient.dart';
 
@@ -95,7 +95,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  FontAwesomeIcons.circleCheck,
+                  Icons.check_circle,
                   color: Color(0xFF27AE60),
                   size: 40,
                 ),
@@ -169,7 +169,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
-                        FontAwesomeIcons.userPlus,
+                        Icons.person_add,
                         size: 24,
                         color: Color(0xFF27AE60),
                       ),
@@ -202,7 +202,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                 _buildTextField(
                   controller: _nameController,
                   label: 'اسم المريض',
-                  icon: FontAwesomeIcons.user,
+                  icon: Icons.person,
                   hint: 'أدخل اسم المريض الكامل',
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -217,16 +217,21 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                 _buildTextField(
                   controller: _amountController,
                   label: 'مبلغ الكمبيالة (د.ع)',
-                  icon: FontAwesomeIcons.coins,
+                  icon: Icons.attach_money,
                   hint: 'أدخل المبلغ الإجمالي',
                   keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'يرجى إدخال مبلغ الكمبيالة';
                     }
-                    if (double.tryParse(value) == null ||
-                        double.parse(value) <= 0) {
-                      return 'يرجى إدخال مبلغ صحيح';
+                    if (double.tryParse(value) == null || double.parse(value) <= 0) {
+                      return 'يرجى إدخال مبلغ صحيح (أرقام فقط)';
+                    }
+                    if (double.parse(value) < 1000) {
+                      return 'المبلغ يجب أن يكون أكبر من 1000 دينار';
                     }
                     return null;
                   },
@@ -237,15 +242,22 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                 _buildTextField(
                   controller: _monthsController,
                   label: 'عدد الأشهر',
-                  icon: FontAwesomeIcons.calendar,
+                  icon: Icons.calendar_month,
                   hint: 'أدخل عدد أشهر التقسيط',
                   keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(2),
+                  ],
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'يرجى إدخال عدد الأشهر';
                     }
                     if (int.tryParse(value) == null || int.parse(value) <= 0) {
-                      return 'يرجى إدخال عدد أشهر صحيح';
+                      return 'يرجى إدخال عدد أشهر صحيح (أرقام فقط)';
+                    }
+                    if (int.parse(value) > 60) {
+                      return 'عدد الأشهر لا يمكن أن يزيد عن 60 شهر';
                     }
                     return null;
                   },
@@ -256,12 +268,25 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                 _buildTextField(
                   controller: _phoneController,
                   label: 'رقم الهاتف',
-                  icon: FontAwesomeIcons.phone,
-                  hint: 'أدخل رقم الهاتف',
+                  icon: Icons.phone,
+                  hint: 'مثال: 07701234567',
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(11),
+                  ],
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'يرجى إدخال رقم الهاتف';
+                    }
+                    if (!value.startsWith('07')) {
+                      return 'رقم الهاتف يجب أن يبدأ بـ 07';
+                    }
+                    if (value.length != 11) {
+                      return 'رقم الهاتف يجب أن يكون 11 رقم';
+                    }
+                    if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
+                      return 'رقم الهاتف يجب أن يحتوي على أرقام فقط';
                     }
                     return null;
                   },
@@ -289,7 +314,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(FontAwesomeIcons.plus),
+                              Icon(Icons.add),
                               SizedBox(width: 12),
                               Text(
                                 'إضافة المريض',
@@ -322,54 +347,38 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
               ),
         ),
         const SizedBox(height: 8),
-        InkWell(
-          onTap: () async {
-            DateTime? pickedDate = await showDatePicker(
-              context: context,
-              initialDate: _selectedDate,
-              firstDate: DateTime(2000),
-              lastDate: DateTime(2100),
-            );
-
-            if (pickedDate != null) {
-              setState(() {
-                _selectedDate = pickedDate;
-              });
-            }
-          },
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFD0EBFF).withOpacity(0.3),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(
-                color: const Color(0xFF649FCC).withOpacity(0.3),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: Colors.grey.withOpacity(0.3),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.calendar_today,
+                color: Colors.grey[600],
               ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  FontAwesomeIcons.calendarDays,
-                  color: Color(0xFF649FCC),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: const Color(0xFF2C3E50),
-                        fontWeight: FontWeight.w500,
-                      ),
-                ),
-                const Spacer(),
-                Text(
-                  '(قابل للتعديل)',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
-                      ),
-                ),
-              ],
-            ),
+              const SizedBox(width: 12),
+              Text(
+                '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+              const Spacer(),
+              Text(
+                '(غير قابل للتعديل)',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[500],
+                    ),
+              ),
+            ],
           ),
         ),
       ],
@@ -383,6 +392,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
     required String hint,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,6 +409,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
           controller: controller,
           keyboardType: keyboardType,
           validator: validator,
+          inputFormatters: inputFormatters,
           decoration: InputDecoration(
             prefixIcon: Icon(icon),
             hintText: hint,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/patient.dart';
@@ -18,6 +17,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _amountController = TextEditingController();
   final _patientNameController = TextEditingController();
   final _searchController = TextEditingController();
+  final _infoSearchController = TextEditingController();
 
   Patient? _selectedPatient;
   Patient? _selectedPatientForInfo;
@@ -25,18 +25,296 @@ class _PaymentScreenState extends State<PaymentScreen> {
   DateTime _selectedDate = DateTime.now();
   List<Payment> _filteredPayments = [];
 
+  // متغيرات للبحث الذكي
+  List<Patient> _filteredPatientsForPayment = [];
+  List<Patient> _filteredPatientsForInfo = [];
+  bool _showDropdownForPayment = false;
+  bool _showDropdownForInfo = false;
+
+  // متغيرات للـ Overlay
+  OverlayEntry? _overlayEntryForPayment;
+  OverlayEntry? _overlayEntryForInfo;
+  final LayerLink _layerLinkForPayment = LayerLink();
+  final LayerLink _layerLinkForInfo = LayerLink();
+
   @override
   void initState() {
     super.initState();
     _selectedDate = DateTime.now();
+    // تحديث البيانات عند فتح الصفحة
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppProvider>().refreshData();
+    });
   }
 
   @override
   void dispose() {
+    _removeOverlayForPayment();
+    _removeOverlayForInfo();
     _amountController.dispose();
     _patientNameController.dispose();
     _searchController.dispose();
+    _infoSearchController.dispose();
     super.dispose();
+  }
+
+  void _removeOverlayForPayment() {
+    _overlayEntryForPayment?.remove();
+    _overlayEntryForPayment = null;
+  }
+
+  void _removeOverlayForInfo() {
+    _overlayEntryForInfo?.remove();
+    _overlayEntryForInfo = null;
+  }
+
+  void _showOverlayForPayment(List<Patient> patients) {
+    _removeOverlayForPayment();
+    _filteredPatientsForPayment = _filteredPatientsForPayment.isEmpty
+        ? patients
+        : _filteredPatientsForPayment;
+
+    if (_filteredPatientsForPayment.isEmpty) return;
+
+    _overlayEntryForPayment = OverlayEntry(
+      builder: (context) => Positioned(
+        width: 300, // عرض القائمة
+        child: CompositedTransformFollower(
+          link: _layerLinkForPayment,
+          showWhenUnlinked: false,
+          offset: const Offset(0.0, 52.0), // أسفل الحقل مباشرة
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: _filteredPatientsForPayment.length,
+                itemBuilder: (context, index) {
+                  final patient = _filteredPatientsForPayment[index];
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectedPatient = patient;
+                        _patientNameController.text = patient.name;
+                        _showDropdownForPayment = false;
+                      });
+                      _removeOverlayForPayment();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        border: index < _filteredPatientsForPayment.length - 1
+                            ? Border(
+                                bottom: BorderSide(
+                                  color: Colors.grey.withValues(alpha: 0.2),
+                                  width: 1,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color.fromARGB(255, 30, 84, 120)
+                                  .withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.person,
+                              color: Color.fromARGB(255, 30, 84, 120),
+                              size: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  patient.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  'المبلغ: ${patient.totalAmount.toStringAsFixed(0)} د.ع',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Color.fromARGB(255, 30, 84, 120),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntryForPayment!);
+    setState(() {
+      _showDropdownForPayment = true;
+    });
+  }
+
+  void _showOverlayForInfo(List<Patient> patients) {
+    _removeOverlayForInfo();
+    _filteredPatientsForInfo =
+        _filteredPatientsForInfo.isEmpty ? patients : _filteredPatientsForInfo;
+
+    if (_filteredPatientsForInfo.isEmpty) return;
+
+    _overlayEntryForInfo = OverlayEntry(
+      builder: (context) => Positioned(
+        width: 400, // عرض القائمة
+        child: CompositedTransformFollower(
+          link: _layerLinkForInfo,
+          showWhenUnlinked: false,
+          offset: const Offset(0.0, 52.0), // أسفل الحقل مباشرة
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2EDE9),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: _filteredPatientsForInfo.length,
+                itemBuilder: (context, index) {
+                  final patient = _filteredPatientsForInfo[index];
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectedPatientForInfo = patient;
+                        _infoSearchController.text = patient.name;
+                        _showDropdownForInfo = false;
+                        final appProvider = context.read<AppProvider>();
+                        _filteredPayments = appProvider.payments
+                            .where((payment) =>
+                                payment.patientName == patient.name)
+                            .toList();
+                      });
+                      _removeOverlayForInfo();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        border: index < _filteredPatientsForInfo.length - 1
+                            ? Border(
+                                bottom: BorderSide(
+                                  color: const Color.fromARGB(255, 30, 84, 120)
+                                      .withValues(alpha: 0.2),
+                                  width: 1,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color.fromARGB(255, 30, 84, 120)
+                                  .withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.person,
+                              color: Color.fromARGB(255, 30, 84, 120),
+                              size: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  patient.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  'الهاتف: ${patient.phoneNumber}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Color(0xFF649FCC),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntryForInfo!);
+    setState(() {
+      _showDropdownForInfo = true;
+    });
   }
 
   // حساب المعلومات المالية للمريض
@@ -50,10 +328,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final monthlyPayment = patient.totalAmount / patient.totalMonths;
 
     // حساب تاريخ التسديد القادم
+    final registrationDate = patient.registrationDate ?? DateTime.now();
     DateTime nextPaymentDate = DateTime(
-        patient.registrationDate.year,
-        patient.registrationDate.month + patientPayments.length + 1,
-        patient.registrationDate.day);
+        registrationDate.year,
+        registrationDate.month + patientPayments.length + 1,
+        registrationDate.day);
 
     return {
       'totalPaid': totalPaid,
@@ -152,7 +431,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  FontAwesomeIcons.circleCheck,
+                  Icons.check_circle,
                   color: Colors.green,
                   size: 40,
                 ),
@@ -211,98 +490,93 @@ class _PaymentScreenState extends State<PaymentScreen> {
     });
   }
 
-  Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF649FCC),
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-    }
-  }
-
-  void _onPatientSelected(Patient? patient) {
-    setState(() {
-      _selectedPatientForInfo = patient;
-      if (patient != null) {
-        final appProvider = context.read<AppProvider>();
-        _filteredPayments = appProvider.payments
-            .where((payment) => payment.patientName == patient.name)
-            .toList();
-      } else {
-        _filteredPayments = [];
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF2EDE9),
-      appBar: AppBar(
-        title: const Text(
-          'صفحة تسديد الكمبيالة',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80), // ← ارتفاع AppBar = 80
+        child: AppBar(
+          title: const Text(
+            'صفحة تسديد الكمبيالة',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontFamily: "Cairo",
+              fontSize: 24,
+            ),
           ),
-        ),
-        backgroundColor: const Color(0xFF649FCC),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+          backgroundColor: const Color.fromARGB(255, 30, 84, 120),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () {
+                // تحديث البيانات
+                context.read<AppProvider>().refreshData();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('جاري تحديث البيانات...'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              tooltip: 'تحديث البيانات',
+            ),
+          ],
         ),
       ),
       body: Consumer<AppProvider>(
         builder: (context, appProvider, child) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                // قسم إدخال البيانات العلوي
-                _buildTopInputSection(appProvider.patients),
+          return GestureDetector(
+            onTap: () {
+              // إخفاء القائمة عند الضغط خارجها
+              _removeOverlayForPayment();
+              _removeOverlayForInfo();
+              setState(() {
+                _showDropdownForPayment = false;
+                _showDropdownForInfo = false;
+              });
+              FocusScope.of(context).unfocus();
+            },
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // قسم إدخال البيانات العلوي
+                  _buildTopInputSection(appProvider.patients),
 
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-                // الجدولين
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // الجدول الأول - معلومات المراجع
-                    Expanded(
-                      flex: 1,
-                      child: _buildPatientInfoTable(
-                          appProvider.patients, appProvider.payments),
-                    ),
+                  // الجدولين
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // الجدول الأول - معلومات المراجع
+                      Expanded(
+                        flex: 1,
+                        child: _buildPatientInfoTable(
+                          appProvider.patients,
+                          appProvider.payments,
+                        ),
+                      ),
 
-                    const SizedBox(width: 16),
+                      const SizedBox(width: 16),
 
-                    // الجدول الثاني - سجل التسديدات
-                    Expanded(
-                      flex: 1,
-                      child: _buildPaymentsHistoryTable(),
-                    ),
-                  ],
-                ),
-              ],
+                      // الجدول الثاني - سجل التسديدات
+                      Expanded(
+                        flex: 1,
+                        child: _buildPaymentsHistoryTable(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -314,7 +588,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color.fromARGB(255, 30, 84, 120),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -327,28 +601,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
       child: Form(
         key: _formKey,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end, // ← الزر بمحاذاة الحقول
           children: [
             // حقل التاريخ
-            Expanded(
-              flex: 2,
-              child: _buildDateField(),
-            ),
+            Expanded(flex: 2, child: _buildDateField()),
 
             const SizedBox(width: 12),
 
-            // حقل اسم المريض
-            Expanded(
-              flex: 3,
-              child: _buildPatientDropdown(patients),
-            ),
+            // حقل اسم المريض - استخدام FutureBuilder لجلب المرضى مع المبالغ المتبقية
+            Expanded(flex: 3, child: _buildPatientDropdownWithFuture()),
 
             const SizedBox(width: 12),
 
             // حقل المبلغ
-            Expanded(
-              flex: 2,
-              child: _buildAmountField(),
-            ),
+            Expanded(flex: 2, child: _buildAmountField()),
 
             const SizedBox(width: 12),
 
@@ -362,48 +628,56 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Widget _buildDateField() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Text(
+          textAlign: TextAlign.center,
           'حقل التاريخ',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF649FCC),
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFFF2EDE9),
+            color: Colors.grey.withOpacity(0.3), // لون أفتح ليظهر أنه معطل
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF649FCC).withOpacity(0.3)),
+            border: Border.all(
+              color: Colors.grey.withOpacity(0.5),
+              width: 1,
+            ),
           ),
-          child: InkWell(
-            onTap: _selectDate,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    FontAwesomeIcons.calendar,
-                    size: 16,
-                    color: const Color(0xFF649FCC),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      DateFormat('yyyy/MM/dd').format(_selectedDate),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.calendar_today,
+                  size: 20,
+                  color: Colors.grey[600],
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    DateFormat('yyyy/MM/dd').format(_selectedDate),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
                     ),
                   ),
-                ],
-              ),
+                ),
+                Text(
+                  '(غير قابل للتعديل)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -411,56 +685,121 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _buildPatientDropdown(List<Patient> patients) {
+  Widget _buildPatientDropdownWithFuture() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Text(
+          textAlign: TextAlign.center,
           'حقل ادخال الاسم',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF649FCC),
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF2EDE9),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF649FCC).withOpacity(0.3)),
-          ),
-          child: DropdownButtonFormField<Patient>(
-            value: _selectedPatient,
-            decoration: const InputDecoration(
-              contentPadding: EdgeInsets.symmetric(horizontal: 12),
-              border: InputBorder.none,
-              hintText: 'اختر المريض',
-              hintStyle: TextStyle(fontSize: 14),
-            ),
-            items: patients.map((Patient patient) {
-              return DropdownMenuItem<Patient>(
-                value: patient,
-                child: Text(
-                  patient.name,
-                  style: const TextStyle(fontSize: 14),
+        FutureBuilder<List<Patient>>(
+          future: context.read<AppProvider>().getPatientsWithPendingPayments(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Color.fromARGB(255, 30, 84, 120),
+                      strokeWidth: 2,
+                    ),
+                  ),
                 ),
               );
-            }).toList(),
-            onChanged: (Patient? newValue) {
-              setState(() {
-                _selectedPatient = newValue;
-                _patientNameController.text = newValue?.name ?? '';
-              });
-            },
-            validator: (value) {
-              if (value == null) {
-                return 'يرجى اختيار مريض';
-              }
-              return null;
-            },
-          ),
+            }
+
+            final patientsWithPending = snapshot.data ?? [];
+
+            return CompositedTransformTarget(
+              link: _layerLinkForPayment,
+              child: Container(
+                width: double.infinity,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextField(
+                  controller: _patientNameController,
+                  decoration: InputDecoration(
+                    hintText: 'ابحث عن المريض للتسديد...',
+                    hintStyle: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.person_search,
+                      color: Color.fromARGB(255, 30, 84, 120),
+                      size: 20,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _showDropdownForPayment
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: const Color.fromARGB(255, 30, 84, 120),
+                      ),
+                      onPressed: () {
+                        if (_showDropdownForPayment) {
+                          _removeOverlayForPayment();
+                          setState(() {
+                            _showDropdownForPayment = false;
+                          });
+                        } else {
+                          _showOverlayForPayment(patientsWithPending);
+                        }
+                      },
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                  style: const TextStyle(fontSize: 18),
+                  onChanged: (value) {
+                    _filteredPatientsForPayment = patientsWithPending
+                        .where((patient) => patient.name
+                            .toLowerCase()
+                            .contains(value.toLowerCase()))
+                        .toList();
+                    // إعادة تعيين المريض إذا تطابق الاسم
+                    try {
+                      final exactMatch = patientsWithPending.firstWhere(
+                        (patient) =>
+                            patient.name.toLowerCase() == value.toLowerCase(),
+                      );
+                      _selectedPatient = exactMatch;
+                    } catch (e) {
+                      _selectedPatient = null;
+                    }
+                    if (value.isNotEmpty) {
+                      _showOverlayForPayment(patientsWithPending);
+                    } else {
+                      _removeOverlayForPayment();
+                    }
+                  },
+                  onTap: () {
+                    _showOverlayForPayment(patientsWithPending);
+                  },
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -468,32 +807,33 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Widget _buildAmountField() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Text(
+          textAlign: TextAlign.center,
           'حقل ادخال المبلغ',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF649FCC),
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFFF2EDE9),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF649FCC).withOpacity(0.3)),
           ),
           child: TextFormField(
             controller: _amountController,
             keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 20),
             decoration: const InputDecoration(
               contentPadding: EdgeInsets.symmetric(horizontal: 12),
               border: InputBorder.none,
               hintText: 'المبلغ',
-              hintStyle: TextStyle(fontSize: 14),
+              hintStyle: TextStyle(fontSize: 20),
             ),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
@@ -511,32 +851,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _buildPaymentButton() {
-    return Container(
+    return SizedBox(
       height: 48,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _addPayment,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return Colors.green.shade700;
+            }
+            if (states.contains(WidgetState.disabled)) {
+              return Colors.green.withOpacity(0.5);
+            }
+            return Colors.green;
+          }),
+          shadowColor: WidgetStateProperty.all(Colors.green.withOpacity(0.5)),
+          elevation: WidgetStateProperty.resolveWith<double>((states) {
+            if (states.contains(WidgetState.pressed)) return 8;
+            return 4;
+          }),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          elevation: 4,
-          shadowColor: Colors.green.withOpacity(0.3),
         ),
         child: _isLoading
             ? const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
+                    color: Colors.white, strokeWidth: 2),
               )
             : const Text(
                 'تسديد',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -564,28 +912,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: Color(0xFF649FCC),
+              color: Color.fromARGB(255, 30, 84, 120),
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
               ),
             ),
-            child: Row(
+            child: const Row(
               children: [
-                const Icon(
-                  FontAwesomeIcons.search,
+                Icon(
+                  Icons.search,
                   color: Colors.white,
-                  size: 20,
+                  size: 30,
                 ),
-                const SizedBox(width: 8),
-                const Text(
-                  'البحث عن معلومات مراجع',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                SizedBox(width: 8),
+                Expanded(
+                  child: Center(
+                    // ← يجعل النص في منتصف الجدول
+                    child: Text(
+                      'البحث عن معلومات مراجع',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'cairo',
+                      ),
+                    ),
                   ),
                 ),
+                SizedBox(width: 28), // إضافة مسافة لتوازن الأيقونة على اليسار
               ],
             ),
           ),
@@ -600,24 +955,92 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 border:
                     Border.all(color: const Color(0xFF649FCC).withOpacity(0.3)),
               ),
-              child: DropdownButtonFormField<Patient>(
-                decoration: const InputDecoration(
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  border: InputBorder.none,
-                  hintText: 'اختر المريض لعرض معلوماته',
-                  hintStyle: TextStyle(fontSize: 14),
-                ),
-                items: patients.map((Patient patient) {
-                  return DropdownMenuItem<Patient>(
-                    value: patient,
-                    child: Text(
-                      patient.name,
-                      style: const TextStyle(fontSize: 14),
+              child: Column(
+                children: [
+                  CompositedTransformTarget(
+                    link: _layerLinkForInfo,
+                    child: Container(
+                      child: TextField(
+                        controller: _infoSearchController,
+                        decoration: InputDecoration(
+                          hintText: 'ابحث عن مريض لعرض معلوماته...',
+                          hintStyle: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.person_search,
+                            color: Color(0xFF649FCC),
+                            size: 20,
+                          ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _showDropdownForInfo
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              color: const Color(0xFF649FCC),
+                            ),
+                            onPressed: () {
+                              if (_showDropdownForInfo) {
+                                _removeOverlayForInfo();
+                                setState(() {
+                                  _showDropdownForInfo = false;
+                                });
+                              } else {
+                                _showOverlayForInfo(patients);
+                              }
+                            },
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                        ),
+                        style: const TextStyle(fontSize: 16),
+                        onChanged: (value) {
+                          _filteredPatientsForInfo = patients
+                              .where((patient) => patient.name
+                                  .toLowerCase()
+                                  .contains(value.toLowerCase()))
+                              .toList();
+                          // إعادة تعيين المريض إذا تطابق الاسم
+                          final exactMatch = patients.firstWhere(
+                            (patient) =>
+                                patient.name.toLowerCase() ==
+                                value.toLowerCase(),
+                            orElse: () => patients.first,
+                          );
+                          if (exactMatch.name.toLowerCase() ==
+                              value.toLowerCase()) {
+                            setState(() {
+                              _selectedPatientForInfo = exactMatch;
+                              _filteredPayments = context
+                                  .read<AppProvider>()
+                                  .payments
+                                  .where((payment) =>
+                                      payment.patientName == exactMatch.name)
+                                  .toList();
+                            });
+                          } else if (value.isEmpty) {
+                            setState(() {
+                              _selectedPatientForInfo = null;
+                              _filteredPayments = [];
+                            });
+                          }
+                          if (value.isNotEmpty) {
+                            _showOverlayForInfo(patients);
+                          } else {
+                            _removeOverlayForInfo();
+                          }
+                        },
+                        onTap: () {
+                          _showOverlayForInfo(patients);
+                        },
+                      ),
                     ),
-                  );
-                }).toList(),
-                onChanged: _onPatientSelected,
+                  ),
+                ],
               ),
             ),
           ),
@@ -645,8 +1068,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _buildInfoRow(
               'المتبقي', '${financials['remaining'].toStringAsFixed(0)} دينار',
               isHighlighted: financials['remaining'] > 0),
-          _buildInfoRow('تاريخ التسجيل',
-              DateFormat('yyyy/MM/dd').format(patient.registrationDate)),
+          _buildInfoRow(
+              'تاريخ التسجيل',
+              DateFormat('yyyy/MM/dd')
+                  .format(patient.registrationDate ?? DateTime.now())),
           _buildInfoRow('مبلغ التسديد الشهري',
               '${financials['monthlyPayment'].toStringAsFixed(0)} دينار'),
           _buildInfoRow('عدد الأشهر', '${patient.totalMonths} شهر'),
@@ -678,7 +1103,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 20,
                 fontWeight: FontWeight.w600,
                 color:
                     isHighlighted ? Colors.red[700] : const Color(0xFF649FCC),
@@ -690,7 +1115,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 20,
                 fontWeight: FontWeight.w500,
                 color: isHighlighted ? Colors.red[700] : Colors.black87,
               ),
@@ -721,28 +1146,34 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: Color(0xFF649FCC),
+              color: Color.fromARGB(255, 30, 84, 120),
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
               ),
             ),
-            child: Row(
+            child: const Row(
               children: [
-                const Icon(
-                  FontAwesomeIcons.list,
+                Icon(
+                  Icons.list_alt,
                   color: Colors.white,
-                  size: 20,
+                  size: 30, // ← حجم الأيقونة
                 ),
-                const SizedBox(width: 8),
-                const Text(
-                  'معلومات تسديدات المراجع',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                SizedBox(width: 8),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      'معلومات تسديدات المراجع',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20, // ← حجم النص
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
+                SizedBox(width: 38), // توازن الأيقونة على اليسار
               ],
             ),
           ),
@@ -753,16 +1184,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
             decoration: const BoxDecoration(
               color: Color(0xFFD0EBFF),
             ),
-            child: Row(
+            child: const Row(
               children: [
                 Expanded(
                   flex: 2,
                   child: Text(
                     'تاريخ التسديد',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF649FCC),
+                      color: Color(0xFF649FCC),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -772,9 +1203,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: Text(
                     'اسم المراجع',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF649FCC),
+                      color: Color(0xFF649FCC),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -784,9 +1215,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: Text(
                     'مبلغ التسديد',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF649FCC),
+                      color: Color(0xFF649FCC),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -817,8 +1248,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           flex: 2,
                           child: Text(
                             DateFormat('yyyy/MM/dd')
-                                .format(payment.paymentDate),
-                            style: const TextStyle(fontSize: 13),
+                                .format(payment.paymentDate ?? DateTime.now()),
+                            style: const TextStyle(fontSize: 20),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -826,7 +1257,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           flex: 2,
                           child: Text(
                             payment.patientName,
-                            style: const TextStyle(fontSize: 13),
+                            style: const TextStyle(fontSize: 20),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -835,7 +1266,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           child: Text(
                             '${payment.amount.toStringAsFixed(0)} دينار',
                             style: const TextStyle(
-                              fontSize: 13,
+                              fontSize: 20,
                               fontWeight: FontWeight.w600,
                               color: Colors.green,
                             ),
@@ -857,7 +1288,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               child: Column(
                 children: [
                   Icon(
-                    FontAwesomeIcons.fileInvoice,
+                    Icons.receipt_long,
                     size: 48,
                     color: Colors.grey[400],
                   ),
@@ -865,16 +1296,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   Text(
                     'لا توجد تسديدات لعرضها',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 20,
                       color: Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'اختر مريض من الجدول الأيسر لعرض تسديداته',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 18,
                       color: Colors.grey[500],
                     ),
                     textAlign: TextAlign.center,
