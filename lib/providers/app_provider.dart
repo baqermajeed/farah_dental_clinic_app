@@ -17,6 +17,9 @@ class AppProvider with ChangeNotifier {
   List<Payment> _payments = [];
   Statistics? _statistics;
 
+  // تتبع الإشعارات التي تم التبليغ عنها لإخفائها لاحقاً
+  final Set<String> _dismissedNotifications = <String>{};
+
   // Getters
   List<Patient> get patients => _patients;
   List<Payment> get payments => _payments;
@@ -26,6 +29,9 @@ class AppProvider with ChangeNotifier {
   String? get currentUser => _currentUser;
   String? get errorMessage => _errorMessage;
   bool get isApiConnected => _isApiConnected;
+
+  // مفتاح فريد للمريض للاستخدام في الإشعارات
+  String _notifKey(Patient p) => p.id ?? '${p.name}|${p.phoneNumber}';
 
   // إحصائيات محلية (كبديل إذا فشل API)
   double get totalAmount {
@@ -117,6 +123,7 @@ class AppProvider with ChangeNotifier {
       if (isLoggedIn && currentUser != null) {
         _isLoggedIn = true;
         _currentUser = currentUser;
+        await _loadDismissed();
         await loadData();
       }
     } catch (e) {
@@ -160,6 +167,7 @@ class AppProvider with ChangeNotifier {
         _patients = await ApiService.getAllPatients();
         _payments = await ApiService.getAllPayments();
         _statistics = await ApiService.getStatistics();
+        await _loadDismissed();
       } else {
         throw Exception('لا يمكن الاتصال بالخادم');
       }
@@ -170,6 +178,57 @@ class AppProvider with ChangeNotifier {
 
     _isLoading = false;
     _isFetching = false;
+    notifyListeners();
+  }
+
+  // تحميل/حفظ حالة الإشعارات المبلّغ عنها
+  Future<void> _loadDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('dismissed_notifications') ?? <String>[];
+    _dismissedNotifications
+      ..clear()
+      ..addAll(list);
+  }
+
+  Future<void> _saveDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('dismissed_notifications', _dismissedNotifications.toList());
+  }
+
+  // آخر تاريخ دفع لمريض
+  DateTime? lastPaymentDateFor(String patientName) {
+    final related = _payments
+        .where((p) => p.patientName == patientName && p.paymentDate != null)
+        .map((p) => p.paymentDate!)
+        .toList();
+    if (related.isEmpty) return null;
+    related.sort((a, b) => b.compareTo(a));
+    return related.first;
+  }
+
+  // المرضى المطلوب تذكيرهم (مستحق اليوم أو متأخر) ولم يتم تعليمهم كمبلّغين
+  List<Patient> get notificationPatients {
+    final now = DateTime.now();
+    return _patients.where((p) {
+      if (p.remainingAmount <= 0) return false;
+      final nextDate = p.nextPaymentDate ?? p.calculatedNextPaymentDate;
+      final today = DateTime(now.year, now.month, now.day);
+      final dueOrOverdue = !nextDate.isAfter(today);
+      if (!dueOrOverdue) return false;
+      final key = _notifKey(p);
+      return !_dismissedNotifications.contains(key);
+    }).toList()
+      ..sort((a, b) {
+        final cmpDays = b.daysOverdue.compareTo(a.daysOverdue);
+        if (cmpDays != 0) return cmpDays;
+        return b.remainingAmount.compareTo(a.remainingAmount);
+      });
+  }
+
+  // تعليم المريض كمبلّغ عنه
+  Future<void> markPatientNotified(Patient patient) async {
+    _dismissedNotifications.add(_notifKey(patient));
+    await _saveDismissed();
     notifyListeners();
   }
 

@@ -5,6 +5,7 @@ import '../widgets/add_patient_dialog.dart';
 import 'payment_screen.dart';
 import 'overdue_payments_screen.dart';
 import 'invoice_form_screen.dart';
+import 'notifications_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -155,45 +156,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         padding: const EdgeInsets.only(bottom: 60.0),
                         child: Consumer<AppProvider>(
                           builder: (context, appProvider, child) {
-                            return PopupMenuButton<String>(
-                              icon: Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(
-                                  Icons.logout,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              onSelected: (value) async {
-                                if (value == 'logout') {
-                                  await appProvider.logout();
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                PopupMenuItem<String>(
-                                  value: 'user_info',
-                                  enabled: false,
-                                  child: Text(
-                                      'مرحباً ${appProvider.currentUser ?? 'المستخدم'}'),
-                                ),
-                                const PopupMenuDivider(),
-                                const PopupMenuItem<String>(
-                                  value: 'logout',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.logout, size: 18),
-                                      SizedBox(width: 8),
-                                      Text('تسجيل الخروج'),
-                                    ],
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // زر الإشعارات
+                                GestureDetector(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const NotificationsScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    width: 60,
+                                    height: 60,
+                                    margin: const EdgeInsetsDirectional.only(end: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        const Center(
+                                          child: Icon(
+                                            Icons.notifications,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        // الشارة بعدد الإشعارات
+                                        Positioned(
+                                          right: 6,
+                                          top: 6,
+                                          child: Consumer<AppProvider>(
+                                            builder: (context, app, _) {
+                                              final count = app.notificationPatients.length;
+                                              if (count == 0) return const SizedBox.shrink();
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red,
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                child: Text(
+                                                  count.toString(),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
+                                ),
+                                // زر تسجيل الخروج (نفس التصميم والحجم)
+                                PopupMenuButton<String>(
+                                  icon: Container(
+                                    width: 60,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Icons.logout,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  onSelected: (value) async {
+                                    if (value == 'logout') {
+                                      await appProvider.logout();
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem<String>(
+                                      value: 'user_info',
+                                      enabled: false,
+                                      child: Text('مرحباً ${appProvider.currentUser ?? 'المستخدم'}'),
+                                    ),
+                                    const PopupMenuDivider(),
+                                    const PopupMenuItem<String>(
+                                      value: 'logout',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.logout, size: 18),
+                                          SizedBox(width: 8),
+                                          Text('تسجيل الخروج'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             );
