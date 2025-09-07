@@ -7,7 +7,36 @@ import '../config/api_config.dart';
 
 class ApiService {
   static String get baseUrl => ApiConfig.baseUrl;
-  static Map<String, String> get headers => ApiConfig.defaultHeaders;
+  static Map<String, String> get headers {
+    if (_token != null) {
+      return {
+        ...ApiConfig.defaultHeaders,
+        'Authorization': 'Bearer $_token',
+      };
+    }
+    return ApiConfig.defaultHeaders;
+  }
+
+  static String? _token;
+
+  // تسجيل الدخول وجلب التوكن
+  static Future<bool> login(String username, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: ApiConfig.defaultHeaders,
+        body: json.encode({'username': username, 'password': password}),
+      );
+      final data = _handleResponse(response);
+      if (data != null && data['access_token'] != null) {
+        _token = data['access_token'];
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
 
   // تجميع الطلبات + كاش قصير لمنع التكرار
   static Future<List<Patient>>? _patientsInFlight;
@@ -346,6 +375,23 @@ class ApiService {
       throw Exception('فشل في الاتصال بالخادم: $e');
     }
   }
+
+  // جلب جميع البيانات دفعة واحدة (bootstrap)
+  static Future<BootstrapData> getBootstrapData() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/bootstrap'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final dynamic data = _handleResponse(response);
+      return BootstrapData.fromJson(data as Map<String, dynamic>);
+    } catch (e) {
+      throw Exception('فشل في جلب بيانات النظام: $e');
+    }
+  }
 }
 
 class _PendingPaymentsSingleton<T> {
@@ -360,7 +406,8 @@ class _PendingPaymentsSingleton<T> {
 
   Future<T> fetch(Future<T> Function() producer) {
     // 2s cache window
-    if (_cache != null && _at != null &&
+    if (_cache != null &&
+        _at != null &&
         DateTime.now().difference(_at!).inMilliseconds <= 2000) {
       return Future.value(_cache as T);
     }
@@ -408,6 +455,32 @@ class Statistics {
   @override
   String toString() {
     return 'Statistics(patients: $totalPatients, total: $totalAmount, paid: $paidAmount)';
+  }
+}
+
+// نموذج بيانات bootstrap
+class BootstrapData {
+  final List<Patient> patients;
+  final List<Payment> payments;
+  final Statistics statistics;
+
+  BootstrapData({
+    required this.patients,
+    required this.payments,
+    required this.statistics,
+  });
+
+  factory BootstrapData.fromJson(Map<String, dynamic> json) {
+    return BootstrapData(
+      patients: (json['patients'] as List<dynamic>)
+          .map((e) => Patient.fromJson(e))
+          .toList(),
+      payments: (json['payments'] as List<dynamic>)
+          .map((e) => Payment.fromJson(e))
+          .toList(),
+      statistics:
+          Statistics.fromJson(json['statistics'] as Map<String, dynamic>),
+    );
   }
 }
 

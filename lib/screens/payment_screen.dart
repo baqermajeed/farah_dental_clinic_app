@@ -350,15 +350,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     if (_selectedPatient == null) {
-      _showErrorSnackBar('يرجى اختيار مريض');
+      _showErrorSnackBar('يرجى اختيار مريض من القائمة وليس فقط كتابة الاسم');
       return;
     }
 
-    // التحقق من أن المبلغ لا يتجاوز المبلغ المتبقي
+    // تحقق أن _selectedPatient ليس null قبل الحساب
     final appProvider = context.read<AppProvider>();
-    final financials =
-        _calculatePatientFinancials(_selectedPatient!, appProvider.payments);
-    final paymentAmount = double.parse(_amountController.text);
+    final financials = _selectedPatient != null
+        ? _calculatePatientFinancials(_selectedPatient!, appProvider.payments)
+        : null;
+    if (financials == null) {
+      _showErrorSnackBar('يرجى اختيار مريض صحيح من القائمة');
+      return;
+    }
+
+    final paymentAmount = double.tryParse(_amountController.text) ?? 0;
+    if (paymentAmount <= 0) {
+      _showErrorSnackBar('يرجى إدخال مبلغ صحيح');
+      return;
+    }
 
     if (paymentAmount > financials['remaining']) {
       _showErrorSnackBar(
@@ -371,6 +381,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
     });
 
     try {
+      // تحقق أن _selectedPatient ليس null قبل الاستخدام
+      if (_selectedPatient == null) {
+        _showErrorSnackBar('يرجى اختيار مريض من القائمة');
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
       final payment = Payment(
         patientName: _selectedPatient!.name,
         amount: paymentAmount,
@@ -385,22 +404,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (success) {
           _showSuccessDialog();
           _clearForm();
-          // تحديث المعلومات المعروضة
-          if (_selectedPatientForInfo?.name == _selectedPatient!.name) {
+          // تحقق أن _selectedPatient ليس null قبل استخدامه هنا أيضاً
+          if (_selectedPatientForInfo?.name == _selectedPatient?.name) {
             setState(() {
               _selectedPatientForInfo = _selectedPatient;
               _filteredPayments = appProvider.payments
                   .where((payment) =>
+                      _selectedPatient != null &&
                       payment.patientName == _selectedPatient!.name)
                   .toList();
             });
           }
+          setState(() {
+            _isLoading = false;
+          });
+          return;
         } else {
           _showErrorSnackBar('حدث خطأ أثناء إضافة الدفعة');
         }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && _isLoading) {
         _showErrorSnackBar('حدث خطأ غير متوقع: ${e.toString()}');
       }
     } finally {
@@ -777,14 +801,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             .toLowerCase()
                             .contains(value.toLowerCase()))
                         .toList();
-                    // إعادة تعيين المريض إذا تطابق الاسم
-                    try {
-                      final exactMatch = patientsWithPending.firstWhere(
-                        (patient) =>
-                            patient.name.toLowerCase() == value.toLowerCase(),
-                      );
-                      _selectedPatient = exactMatch;
-                    } catch (e) {
+                    // فقط إذا تطابق الاسم تماماً، عيّن المريض
+                    final exactMatch = patientsWithPending.where(
+                      (patient) =>
+                          patient.name.toLowerCase() == value.toLowerCase(),
+                    );
+                    if (exactMatch.isNotEmpty) {
+                      _selectedPatient = exactMatch.first;
+                    } else {
                       _selectedPatient = null;
                     }
                     if (value.isNotEmpty) {

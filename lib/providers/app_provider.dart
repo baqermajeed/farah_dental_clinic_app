@@ -35,13 +35,13 @@ class AppProvider with ChangeNotifier {
 
   // إحصائيات محلية (كبديل إذا فشل API)
   double get totalAmount {
-    return _statistics?.totalAmount ?? 
-           _patients.fold(0.0, (sum, patient) => sum + patient.totalAmount);
+    return _statistics?.totalAmount ??
+        _patients.fold(0.0, (sum, patient) => sum + patient.totalAmount);
   }
 
   double get paidAmount {
-    return _statistics?.paidAmount ?? 
-           _patients.fold(0.0, (sum, patient) => sum + patient.paidAmount);
+    return _statistics?.paidAmount ??
+        _patients.fold(0.0, (sum, patient) => sum + patient.paidAmount);
   }
 
   double get remainingAmount {
@@ -53,8 +53,8 @@ class AppProvider with ChangeNotifier {
   }
 
   int get overdueCount {
-    return _statistics?.overduePatients ?? 
-           _patients.where((patient) => patient.isOverdue).length;
+    return _statistics?.overduePatients ??
+        _patients.where((patient) => patient.isOverdue).length;
   }
 
   // تسجيل الدخول
@@ -63,22 +63,15 @@ class AppProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // محاكاة تأخير الشبكة
-      await Future.delayed(const Duration(seconds: 1));
-
-      // التحقق من بيانات تسجيل الدخول
-      if (username == 'farah' && password == 'farah12345') {
+      // تحقق من بيانات تسجيل الدخول عبر API
+      final success = await ApiService.login(username, password);
+      if (success) {
         _isLoggedIn = true;
         _currentUser = username;
-
-        // حفظ حالة تسجيل الدخول
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
         await prefs.setString('currentUser', username);
-
-        // تحميل البيانات
         await loadData();
-
         _isLoading = false;
         notifyListeners();
         return true;
@@ -161,12 +154,13 @@ class AppProvider with ChangeNotifier {
     try {
       // اختبار الاتصال أولاً
       await checkApiConnection();
-      
+
       if (_isApiConnected) {
-        // تحميل من API
-        _patients = await ApiService.getAllPatients();
-        _payments = await ApiService.getAllPayments();
-        _statistics = await ApiService.getStatistics();
+        // تحميل من API عبر ريكويست واحد
+        final bootstrap = await ApiService.getBootstrapData();
+        _patients = bootstrap.patients;
+        _payments = bootstrap.payments;
+        _statistics = bootstrap.statistics;
         await _loadDismissed();
       } else {
         throw Exception('لا يمكن الاتصال بالخادم');
@@ -192,7 +186,8 @@ class AppProvider with ChangeNotifier {
 
   Future<void> _saveDismissed() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('dismissed_notifications', _dismissedNotifications.toList());
+    await prefs.setStringList(
+        'dismissed_notifications', _dismissedNotifications.toList());
   }
 
   // آخر تاريخ دفع لمريض
@@ -257,7 +252,7 @@ class AppProvider with ChangeNotifier {
   // تحديث بيانات مريض
   Future<bool> updatePatient(Patient patient) async {
     if (patient.id == null) return false;
-    
+
     try {
       await ApiService.updatePatient(patient.id!, patient);
       await loadData(); // إعادة تحميل البيانات
