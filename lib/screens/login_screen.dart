@@ -61,7 +61,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -103,6 +102,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 32),
                       // زر تسجيل الدخول
                       _buildLoginButton(),
+                      const SizedBox(height: 24),
+                      // معلومات تسجيل الدخول
+                      _buildLoginInfo(),
                     ],
                   ),
                 ),
@@ -267,5 +269,57 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-
+  Widget _buildLoginInfo() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2EDE9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFD0EBFF),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 18,
+                color: Color(0xFF649FCC),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'بيانات تسجيل الدخول',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF649FCC),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'اسم المستخدم: admin\nكلمة المرور: farah123',
+              style: TextStyle(
+                color: Colors.grey[700],
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
