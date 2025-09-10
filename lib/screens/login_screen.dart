@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
-import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,13 +14,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isPasswordVisible = false;
+  String? _loginError;
 
   @override
   void initState() {
     super.initState();
-    // تعيين اليوزر والباسوورد الافتراضيين
-    _usernameController.text = 'farah';
-    _passwordController.text = 'farah12345';
   }
 
   @override
@@ -34,6 +31,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() {
+      _loginError = null;
+    });
+
     final success = await context.read<AppProvider>().login(
           _usernameController.text.trim(),
           _passwordController.text.trim(),
@@ -41,12 +42,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (mounted) {
       if (success) {
-        // تسجيل دخول ناجح
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const DashboardScreen()),
-        );
+        setState(() {
+          _loginError = null;
+        });
+        // اترك التوجيه لـ AuthWrapper
       } else {
         // تسجيل دخول فاشل
+        setState(() {
+          _loginError = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('اسم المستخدم أو كلمة المرور غير صحيحة'),
@@ -99,6 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       _buildUsernameField(),
                       const SizedBox(height: 20),
                       _buildPasswordField(),
+                      _buildErrorAlert(),
                       const SizedBox(height: 32),
                       // زر تسجيل الدخول
                       _buildLoginButton(),
@@ -179,6 +184,13 @@ class _LoginScreenState extends State<LoginScreen> {
         hintText: 'أدخل اسم المستخدم',
         border: OutlineInputBorder(),
       ),
+      onChanged: (_) {
+        if (_loginError != null) {
+          setState(() {
+            _loginError = null;
+          });
+        }
+      },
       validator: (value) {
         if (value == null || value.isEmpty) {
           return 'يرجى إدخال اسم المستخدم';
@@ -208,12 +220,49 @@ class _LoginScreenState extends State<LoginScreen> {
         hintText: 'أدخل كلمة المرور',
         border: const OutlineInputBorder(),
       ),
+      onChanged: (_) {
+        if (_loginError != null) {
+          setState(() {
+            _loginError = null;
+          });
+        }
+      },
       validator: (value) {
         if (value == null || value.isEmpty) {
           return 'يرجى إدخال كلمة المرور';
         }
         return null;
       },
+    );
+  }
+
+  Widget _buildErrorAlert() {
+    if (_loginError == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _loginError!,
+              style: TextStyle(
+                color: Colors.red[700],
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -309,7 +358,7 @@ class _LoginScreenState extends State<LoginScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'اسم المستخدم: admin\nكلمة المرور: farah123',
+              'يرجى إدخال بيانات تسجيل الدخول الخاصة بك.',
               style: TextStyle(
                 color: Colors.grey[700],
                 fontSize: 13,

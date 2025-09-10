@@ -2,14 +2,44 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../widgets/add_patient_dialog.dart';
-import 'payment_screen.dart';
 import 'overdue_payments_screen.dart';
 import 'invoice_form_screen.dart';
 import 'notifications_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart' hide TextDirection;
+import '../models/payment.dart';
+import '../models/patient.dart';
 
 /// نوع الكارد - دائري أو شريطي
 enum CardType { circular, bar }
+
+class PatientColumnConfig {
+  final String title;
+  final int? flex;
+  final double? width;
+  final TextAlign headerAlign;
+  final TextAlign cellAlign;
+  final EdgeInsets? headerPadding;
+  final EdgeInsets? cellPadding;
+  final double headerGapAfter;
+  final double cellGapAfter;
+  final Widget Function(dynamic patient) cellBuilder;
+  final TextStyle? headerStyle;
+
+  const PatientColumnConfig({
+    required this.title,
+    this.flex,
+    this.width,
+    this.headerAlign = TextAlign.right,
+    this.cellAlign = TextAlign.right,
+    this.headerPadding,
+    this.cellPadding,
+    this.headerGapAfter = 0,
+    this.cellGapAfter = 0,
+    required this.cellBuilder,
+    this.headerStyle,
+  });
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,13 +49,38 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  String _searchQuery = '';
   @override
   void initState() {
     super.initState();
-    // تحميل البيانات عند بدء الشاشة
+    // تحميل البيانات عند بدء الشاشة ثم إضافة مريض تجريبي متأخر إن لم يوجد
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AppProvider>().loadData();
+      _initApp();
     });
+  }
+
+  Future<void> _initApp() async {
+    final app = context.read<AppProvider>();
+    await app.loadData();
+    await _addTestOverduePatient(app);
+  }
+
+  Future<void> _addTestOverduePatient(AppProvider app) async {
+    const String testName = 'مراجع متأخر (تجربة)';
+    final bool exists = app.patients.any((p) => p.name == testName);
+    if (exists) return;
+    final Patient demo = Patient(
+      name: testName,
+      phoneNumber: '0780000000',
+      totalAmount: 1000000,
+      totalMonths: 10,
+      registrationDate: DateTime.now().subtract(const Duration(days: 120)),
+      paidAmount: 100000,
+      nextPaymentDate: DateTime.now().subtract(const Duration(days: 10)),
+    );
+    try {
+      await app.addPatient(demo);
+    } catch (_) {}
   }
 
   @override
@@ -76,11 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: _buildTopButton(
                             'تسديد كمبيالة',
                             Icons.payment,
-                            () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => const PaymentScreen()),
-                            ),
+                            () => showPaymentDialog(context),
                           ),
                         ),
                         const SizedBox(width: 20),
@@ -143,6 +194,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   height: 85,
                   child: _buildNotificationsContainer(),
                 ),
+              ),
+
+              // جدول المرضى أسفل شريط الإشعارات بمسافة 20، وعلى بعد 20 من الأعمدة الجانبية وقاع الشاشة
+              Positioned(
+                top: 30 + 70 + 50 + 50 + 60 + 85 + 30, // أسفل الإشعارات بـ 20
+                right: 185, // 20 من العمود الأيمن (right:30 + عرض 130 + ~25)
+                left: 350, // 20 من العمود الأيسر (left:30 + عرض 300 + 20)
+                bottom: 20, // 20 من القاع
+                child: _buildPatientsTable(),
               ),
 
               // زر طباعة استمارة بمحاذاة شريط البحث مع مسافة 20 بينهما
@@ -791,10 +851,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         textDirection: TextDirection.rtl,
         textAlignVertical: TextAlignVertical.center, // النص بالسنتر عمودياً
         style: GoogleFonts.cairo(
-          fontWeight: FontWeight.w200, // Bold
-          color: Colors.black, // لون النص أسود
-          fontSize: 10,
-        ),
+            fontWeight: FontWeight.bold, // Bold
+            color: Colors.black, // لون النص أسود
+            fontSize: 14),
         decoration: InputDecoration(
           hintText: 'ابحث عن مريض',
           hintTextDirection: TextDirection.rtl,
@@ -844,6 +903,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         onSubmitted: (query) {
           // يمكن لاحقاً ربطه ببحث فعلي من المزود
+          setState(() => _searchQuery = query.trim());
+        },
+        onChanged: (value) {
+          setState(() => _searchQuery = value.trim());
         },
       ),
     );
@@ -945,6 +1008,588 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // جدول عرض المرضى
+  Widget _buildPatientsTable() {
+    return Consumer<AppProvider>(
+      builder: (context, appProvider, _) {
+        final patients = appProvider.patients;
+        final List<dynamic> sortedPatients = List<dynamic>.from(patients)
+          ..sort((a, b) {
+            final da = _safeRegistrationDate(a);
+            final db = _safeRegistrationDate(b);
+            if (da == null && db == null) return 0;
+            if (da == null) return 1; // null considered older
+            if (db == null) return -1;
+            return db.compareTo(da); // newest first
+          });
+        final filteredPatients = sortedPatients.where((p) {
+          if (_searchQuery.isEmpty) return true;
+          final q = _searchQuery.toLowerCase();
+          final name = (p.name ?? '').toString().toLowerCase();
+          final phone = (p.phoneNumber ?? '').toString().toLowerCase();
+          return name.contains(q) || phone.contains(q);
+        }).toList();
+        final textStyle = GoogleFonts.cairo(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF2C3E50));
+        final headerStyle = GoogleFonts.cairo(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color.fromARGB(255, 59, 155, 157));
+
+        final columns = <PatientColumnConfig>[
+          PatientColumnConfig(
+            title: 'تاريخ التسجيل',
+            flex: 1,
+            headerAlign: TextAlign.right,
+            cellAlign: TextAlign.right,
+            headerGapAfter: 30,
+            cellGapAfter: 30,
+            cellBuilder: (p) => Text(
+              _formatDate(_safeRegistrationDate(p)),
+              textAlign: TextAlign.right,
+              style:
+                  textStyle.copyWith(color: Color.fromARGB(255, 128, 155, 173)),
+            ),
+          ),
+          PatientColumnConfig(
+            title: 'اسم المريض',
+            flex: 1,
+            headerAlign: TextAlign.right,
+            cellAlign: TextAlign.right,
+            headerGapAfter: 30,
+            cellGapAfter: 30,
+            cellBuilder: (p) => Text(
+              p.name,
+              textAlign: TextAlign.right,
+              style:
+                  textStyle.copyWith(color: Color.fromARGB(255, 30, 84, 120)),
+            ),
+          ),
+          PatientColumnConfig(
+            title: 'رقم الهاتف',
+            flex: 1,
+            headerAlign: TextAlign.right,
+            cellAlign: TextAlign.right,
+            headerGapAfter: 30,
+            cellGapAfter: 30,
+            cellBuilder: (p) => Text(
+              p.phoneNumber,
+              textAlign: TextAlign.right,
+              style:
+                  textStyle.copyWith(color: Color.fromARGB(255, 128, 155, 173)),
+            ),
+          ),
+          PatientColumnConfig(
+            title: 'مبلغ الكمبيالة',
+            flex: 1,
+            headerAlign: TextAlign.right,
+            cellAlign: TextAlign.right,
+            headerGapAfter: 30,
+            cellGapAfter: 30,
+            cellBuilder: (p) => Text(
+              p.totalAmount.toStringAsFixed(0),
+              textAlign: TextAlign.right,
+              style:
+                  textStyle.copyWith(color: Color.fromARGB(255, 128, 155, 173)),
+            ),
+          ),
+          PatientColumnConfig(
+            title: 'الإجراء',
+            width: 150,
+            headerAlign: TextAlign.center,
+            cellAlign: TextAlign.center,
+            headerGapAfter: 0,
+            cellGapAfter: 0,
+            cellPadding: const EdgeInsets.only(right: 40),
+            cellBuilder: (p) => SizedBox(
+              width: 90,
+              child: ElevatedButton(
+                onPressed: () => _showPatientInfo(p),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 59, 155, 157),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                ),
+                child: Text('عرض',
+                    style: GoogleFonts.cairo(
+                        fontSize: 18, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ];
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(
+              top: 15,
+              bottom: 30,
+              left: 40,
+              right: 10,
+            ),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'جـــدول عـــرض المـــرضى',
+                      style: GoogleFonts.cairo(
+                        fontSize: 20,
+                        color: Color.fromARGB(255, 30, 84, 120),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 25),
+                  // رأس الجدول
+                  Padding(
+                    padding: const EdgeInsets.only(right: 30),
+                    child: Row(
+                      textDirection: TextDirection.rtl,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        ...() {
+                          final widgets = <Widget>[];
+                          for (var i = 0; i < columns.length; i++) {
+                            final col = columns[i];
+                            final headerText = Padding(
+                              padding: col.headerPadding ?? EdgeInsets.zero,
+                              child: Text(
+                                col.title,
+                                textAlign: col.headerAlign,
+                                style: col.headerStyle ?? headerStyle,
+                              ),
+                            );
+                            if (col.width != null) {
+                              widgets.add(SizedBox(
+                                  width: col.width!, child: headerText));
+                            } else {
+                              widgets.add(Expanded(
+                                  flex: col.flex ?? 1, child: headerText));
+                            }
+                            if (i < columns.length - 1 &&
+                                col.headerGapAfter > 0) {
+                              widgets.add(SizedBox(width: col.headerGapAfter));
+                            }
+                          }
+                          return widgets;
+                        }(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // صفوف البيانات
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 30),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            for (final p in filteredPatients) ...[
+                              Row(
+                                textDirection: TextDirection.rtl,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  ...() {
+                                    final widgets = <Widget>[];
+                                    for (var i = 0; i < columns.length; i++) {
+                                      final col = columns[i];
+                                      Widget cell = col.cellBuilder(p);
+                                      if (col.cellPadding != null) {
+                                        cell = Padding(
+                                            padding: col.cellPadding!,
+                                            child: cell);
+                                      }
+                                      if (col.width != null) {
+                                        widgets.add(SizedBox(
+                                            width: col.width!, child: cell));
+                                      } else {
+                                        widgets.add(Expanded(
+                                            flex: col.flex ?? 1, child: cell));
+                                      }
+                                      if (i < columns.length - 1 &&
+                                          col.cellGapAfter > 0) {
+                                        widgets.add(
+                                            SizedBox(width: col.cellGapAfter));
+                                      }
+                                    }
+                                    return widgets;
+                                  }(),
+                                ],
+                              ),
+                              const SizedBox(height: 30),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  DateTime? _safeRegistrationDate(dynamic p) {
+    try {
+      final date = (p.registrationDate as DateTime?);
+      return date;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return '-';
+    final d = DateTime(dt.year, dt.month, dt.day);
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  void _showPatientInfo(dynamic p) {
+    final app = context.read<AppProvider>();
+    final payments = app.getPatientPayments(p.name)
+      ..sort((a, b) => (b.paymentDate ?? DateTime(0))
+          .compareTo(a.paymentDate ?? DateTime(0)));
+
+    final Color primary = const Color.fromARGB(255, 30, 84, 120);
+    final Color accent = const Color.fromARGB(255, 59, 155, 157);
+
+    final DateTime? registration = _safeRegistrationDate(p);
+    final DateTime nextPay = p.nextPaymentDate ?? p.calculatedNextPaymentDate;
+    final double dialogMaxHeight = MediaQuery.of(context).size.height * 0.8;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+          titlePadding: EdgeInsets.zero,
+          contentPadding: EdgeInsets.zero,
+          content: Directionality(
+            textDirection: TextDirection.rtl,
+            child: SizedBox(
+              width: 720,
+              height: dialogMaxHeight,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [primary, accent],
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                      ),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                    child: Row(
+                      textDirection: TextDirection.ltr,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.person, color: Colors.white),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    p.name,
+                                    textAlign: TextAlign.right,
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    p.phoneNumber,
+                                    textAlign: TextAlign.right,
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white.withOpacity(0.9),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Scrollable content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Info chips
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final double gap = 12;
+                              final double threeColWidth =
+                                  (constraints.maxWidth - (gap * 2)) / 3;
+                              final double twoColWidth =
+                                  (constraints.maxWidth - gap) / 2;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    textDirection: TextDirection.rtl,
+                                    children: [
+                                      SizedBox(
+                                        width: threeColWidth,
+                                        child: _infoChip(
+                                            'المبلغ الكلي',
+                                            p.totalAmount.toStringAsFixed(0),
+                                            accent),
+                                      ),
+                                      SizedBox(width: gap),
+                                      SizedBox(
+                                        width: threeColWidth,
+                                        child: _infoChip(
+                                            'المبلغ المتبقي',
+                                            p.remainingAmount
+                                                .toStringAsFixed(0),
+                                            const Color(0xFFEF5350)),
+                                      ),
+                                      SizedBox(width: gap),
+                                      SizedBox(
+                                        width: threeColWidth,
+                                        child: _infoChip(
+                                            'المبلغ المسدد',
+                                            p.paidAmount.toStringAsFixed(0),
+                                            const Color(0xFF66BB6A)),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    alignment: WrapAlignment.end,
+                                    spacing: gap,
+                                    runSpacing: gap,
+                                    children: [
+                                      SizedBox(
+                                        width: twoColWidth,
+                                        child: _infoChip('تاريخ التسجيل',
+                                            _formatDate(registration), primary),
+                                      ),
+                                      SizedBox(
+                                        width: twoColWidth,
+                                        child: _infoChip('تاريخ التسديد القادم',
+                                            _formatDate(nextPay), primary),
+                                      ),
+                                      SizedBox(
+                                        width: twoColWidth,
+                                        child: _infoChip('عدد الأشهر',
+                                            p.totalMonths.toString(), accent),
+                                      ),
+                                      SizedBox(
+                                        width: twoColWidth,
+                                        child: _infoChip(
+                                            'القسط الشهري',
+                                            p.calculatedMonthlyAmount
+                                                .toStringAsFixed(0),
+                                            primary),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 20),
+                          // Payments history title
+                          Text(
+                            'سجل التسديدات',
+                            textAlign: TextAlign.right,
+                            style: GoogleFonts.cairo(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: primary,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Payments list (as Column, not ListView)
+                          if (payments.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              alignment: Alignment.center,
+                              child: Text(
+                                'لا توجد تسديدات',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            )
+                          else
+                            Column(
+                              children: [
+                                for (final pm in payments)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF8FAFB),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: accent.withOpacity(0.15)),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 10),
+                                      child: Row(
+                                        textDirection: TextDirection.rtl,
+                                        children: [
+                                          // الاسم (يميني ومتمدّد)
+                                          Expanded(
+                                            child: Text(
+                                              pm.patientName,
+                                              textAlign: TextAlign.right,
+                                              style: GoogleFonts.cairo(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // التاريخ
+                                          Text(
+                                            _formatDate(pm.paymentDate),
+                                            textAlign: TextAlign.right,
+                                            style: GoogleFonts.cairo(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // المبلغ (أيسر كشيب)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: accent.withOpacity(0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Text(
+                                              pm.amount.toStringAsFixed(0),
+                                              textAlign: TextAlign.right,
+                                              style: GoogleFonts.cairo(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w800,
+                                                color: accent,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          actionsAlignment: MainAxisAlignment.end,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'إغلاق',
+                style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _infoChip(String title, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color.withOpacity(0.9),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // بناء أزرار الشريط الجانبي
   Widget _buildSidebarButton(String title, IconData icon, VoidCallback onTap) {
     return Container(
@@ -1012,6 +1657,403 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+Future<void> showPaymentDialog(BuildContext context) async {
+  final app = context.read<AppProvider>();
+  final List<String> patientNames = app.patients.map((p) => p.name).toList();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController amountController = TextEditingController();
+  final DateTime today = DateTime.now();
+  bool submitting = false;
+
+  return showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      final Color primary = const Color.fromARGB(255, 30, 84, 120);
+      final Color accent = const Color.fromARGB(255, 59, 155, 157);
+      return StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          contentPadding: EdgeInsets.zero,
+          content: Directionality(
+            textDirection: TextDirection.rtl,
+            child: SizedBox(
+              width: 640,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [primary, accent],
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                      ),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'تسديد كمبيالة',
+                              style: GoogleFonts.cairo(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.payment, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Column(
+                      children: [
+                        // Date fixed
+                        _LabeledField(
+                          label: 'تاريخ التسديد',
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF2F5F7),
+                              borderRadius: BorderRadius.circular(12),
+                              border:
+                                  Border.all(color: const Color(0xFFE2E8EC)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today,
+                                    size: 18, color: Colors.black54),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    DateFormat('yyyy/MM/dd').format(today),
+                                    textAlign: TextAlign.right,
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '(ثابت)',
+                                  style: GoogleFonts.cairo(
+                                      fontSize: 12, color: Colors.black54),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Patient name with autocomplete
+                        _LabeledField(
+                          label: 'اسم المريض',
+                          child: Autocomplete<String>(
+                            optionsBuilder: (TextEditingValue value) {
+                              final q = value.text.trim().toLowerCase();
+                              if (q.isEmpty)
+                                return const Iterable<String>.empty();
+                              return patientNames
+                                  .where((n) => n.toLowerCase().contains(q))
+                                  .take(10);
+                            },
+                            onSelected: (sel) {
+                              nameController.text = sel;
+                              setState(() {});
+                            },
+                            fieldViewBuilder: (context, textController,
+                                focusNode, onFieldSubmitted) {
+                              textController.text = nameController.text;
+                              textController.selection =
+                                  TextSelection.fromPosition(TextPosition(
+                                      offset: textController.text.length));
+                              return TextField(
+                                controller: textController,
+                                focusNode: focusNode,
+                                textDirection: TextDirection.rtl,
+                                decoration: InputDecoration(
+                                  hintText: 'اكتب اسم المريض...',
+                                  hintStyle:
+                                      GoogleFonts.cairo(color: Colors.black45),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  prefixIcon: const Icon(Icons.person,
+                                      color: Color(0xFF3B9B9D)),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFFE2E8EC)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFF3B9B9D), width: 1.5),
+                                  ),
+                                ),
+                                onChanged: (v) => nameController.text = v,
+                              );
+                            },
+                            optionsViewBuilder: (context, onSelected, options) {
+                              return Align(
+                                alignment: Alignment.topRight,
+                                child: Material(
+                                  elevation: 6,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    width: 600,
+                                    constraints:
+                                        const BoxConstraints(maxHeight: 220),
+                                    decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(12)),
+                                    child: ListView.builder(
+                                      padding: EdgeInsets.zero,
+                                      itemCount: options.length,
+                                      itemBuilder: (context, index) {
+                                        final option = options.elementAt(index);
+                                        return ListTile(
+                                          dense: true,
+                                          leading: const Icon(Icons.person,
+                                              color: Color(0xFF3B9B9D)),
+                                          title: Text(option,
+                                              textAlign: TextAlign.right,
+                                              style: GoogleFonts.cairo(
+                                                  fontWeight: FontWeight.w700)),
+                                          onTap: () => onSelected(option),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Amount
+                        _LabeledField(
+                          label: 'مبلغ التسديد',
+                          child: TextField(
+                            controller: amountController,
+                            textDirection: TextDirection.rtl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              hintText: 'ادخل مبلغ التسديد',
+                              hintStyle:
+                                  GoogleFonts.cairo(color: Colors.black45),
+                              filled: true,
+                              fillColor: Colors.white,
+                              prefixIcon: const Icon(Icons.attach_money,
+                                  color: Color(0xFF3B9B9D)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 12),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide:
+                                    const BorderSide(color: Color(0xFFE2E8EC)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                    color: Color(0xFF3B9B9D), width: 1.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Actions
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed:
+                                submitting ? null : () => Navigator.pop(ctx),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey.shade200,
+                              foregroundColor: Colors.black87,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: Text('إلغاء',
+                                style: GoogleFonts.cairo(
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: submitting
+                                ? null
+                                : () async {
+                                    final name = nameController.text.trim();
+                                    final amount = double.tryParse(
+                                        amountController.text.trim());
+                                    if (name.isEmpty ||
+                                        amount == null ||
+                                        amount <= 0) {
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'يرجى إدخال اسم صحيح ومبلغ صحيح')),
+                                      );
+                                      return;
+                                    }
+                                    // تحقق من أن المبلغ لا يتجاوز الكلي أو المتبقي
+                                    final matching = app.patients.where((p) =>
+                                        p.name.trim().toLowerCase() ==
+                                        name.toLowerCase());
+                                    if (matching.isEmpty) {
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        const SnackBar(
+                                            content: Text('المريض غير موجود')),
+                                      );
+                                      return;
+                                    }
+                                    final patient = matching.first;
+                                    final double total = patient.totalAmount;
+                                    final double remaining =
+                                        patient.remainingAmount;
+                                    if (amount > total || amount > remaining) {
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'مبلغ التسديد أكبر من المبلغ الكلي أو المتبقي')),
+                                      );
+                                      return;
+                                    }
+                                    setState(() => submitting = true);
+                                    try {
+                                      final payment = Payment(
+                                        patientName: name,
+                                        amount: amount,
+                                        paymentDate: today,
+                                        notes:
+                                            'تسديد كمبيالة - ${DateFormat('yyyy/MM/dd').format(today)}',
+                                      );
+                                      final ok = await app.addPayment(payment);
+                                      if (!ctx.mounted) return;
+                                      if (ok) {
+                                        Navigator.pop(ctx);
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'تم تسجيل الدفعة بنجاح')),
+                                        );
+                                      } else {
+                                        setState(() => submitting = false);
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          const SnackBar(
+                                              content:
+                                                  Text('فشل تسجيل الدفعة')),
+                                        );
+                                      }
+                                    } catch (_) {
+                                      if (!ctx.mounted) return;
+                                      setState(() => submitting = false);
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        const SnackBar(
+                                            content: Text('حدث خطأ غير متوقع')),
+                                      );
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF3B9B9D),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: submitting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : Text('تسديد',
+                                    style: GoogleFonts.cairo(
+                                        fontWeight: FontWeight.w800)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _LabeledField extends StatelessWidget {
+  final String label;
+  final Widget child;
+  const _LabeledField({required this.label, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            label,
+            style: GoogleFonts.cairo(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF3B9B9D)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        child,
+      ],
     );
   }
 }

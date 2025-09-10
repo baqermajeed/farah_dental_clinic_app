@@ -19,14 +19,14 @@ class InvoiceData {
     List<PaymentInstallment> installments = [];
     double monthlyAmount = patient.totalAmount / patient.totalMonths;
     final regDate = patient.registrationDate ?? DateTime.now();
-    
+
     for (int i = 0; i < patient.totalMonths; i++) {
       DateTime paymentDate = DateTime(
         regDate.year,
         regDate.month + i,
         regDate.day,
       );
-      
+
       installments.add(PaymentInstallment(
         paymentDate: paymentDate,
         amount: monthlyAmount,

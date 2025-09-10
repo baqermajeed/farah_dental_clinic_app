@@ -71,7 +71,10 @@ class AppProvider with ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
         await prefs.setString('currentUser', username);
-        await loadData();
+        // حمّل البيانات مباشرة بعد تسجيل الدخول بنجاح
+        try {
+          await loadData(force: true);
+        } catch (_) {}
         _isLoading = false;
         notifyListeners();
         return true;
@@ -99,6 +102,7 @@ class AppProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('isLoggedIn');
     await prefs.remove('currentUser');
+    await ApiService.clearToken();
 
     notifyListeners();
   }
@@ -113,11 +117,18 @@ class AppProvider with ChangeNotifier {
       final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
       final currentUser = prefs.getString('currentUser');
 
-      if (isLoggedIn && currentUser != null) {
+      // حمّل التوكن أولاً قبل اعتماد حالة تسجيل الدخول
+      await ApiService.loadToken();
+
+      if (isLoggedIn && currentUser != null && ApiService.hasToken) {
         _isLoggedIn = true;
         _currentUser = currentUser;
         await _loadDismissed();
-        await loadData();
+        // اترك تحميل البيانات للشاشة بعد اكتمال التوجيه
+      } else {
+        // لا يوجد توكن صالح، اعتبر المستخدم غير مسجل الدخول
+        _isLoggedIn = false;
+        _currentUser = null;
       }
     } catch (e) {
       debugPrint('خطأ في التحقق من حالة تسجيل الدخول: $e');
@@ -144,19 +155,35 @@ class AppProvider with ChangeNotifier {
   }
 
   // تحميل البيانات من API
-  Future<void> loadData() async {
-    if (_isFetching) return; // تجاهل إذا كان هناك تحميل جارٍ
+  Future<void> loadData({bool force = false}) async {
+    if (_isFetching) return;
+    // إذا كانت البيانات محملة مسبقاً ولا يوجد طلب تحديث قسري، تجنب الاتصال بالشبكة
+    if (!force && _patients.isNotEmpty && _statistics != null) {
+      _isLoading = false;
+      _isFetching = false;
+      notifyListeners();
+      return;
+    }
     _isFetching = true;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // اختبار الاتصال أولاً
+      // تأكد من وجود التوكن قبل أي اتصال محمي
+      if (!ApiService.hasToken) {
+        await ApiService.loadToken();
+      }
+
+      // لا تقم بمحاولات شبكة إذا لم يوجد توكن
+      if (!ApiService.hasToken) {
+        throw Exception('غير مصرح: لا يوجد توكن');
+      }
+
       await checkApiConnection();
 
       if (_isApiConnected) {
-        // تحميل من API عبر ريكويست واحد
+        // جلب جميع البيانات دفعة واحدة فقط
         final bootstrap = await ApiService.getBootstrapData();
         _patients = bootstrap.patients;
         _payments = bootstrap.payments;
@@ -167,6 +194,18 @@ class AppProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = e.toString();
+      // إذا كانت المشكلة مصادقة، امسح التوكن واعتبر المستخدم غير مسجل
+      final String msg = e.toString();
+      if (msg.contains('UNAUTHORIZED') || msg.contains('401')) {
+        _isLoggedIn = false;
+        _currentUser = null;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('isLoggedIn');
+          await prefs.remove('currentUser');
+        } catch (_) {}
+        await ApiService.clearToken();
+      }
       debugPrint('Error loading data: $e');
     }
 
@@ -230,7 +269,7 @@ class AppProvider with ChangeNotifier {
   // إضافة مريض جديد
   Future<bool> addPatient(Patient patient) async {
     try {
-      if (_isApiConnected) {
+      if (_isApiConnected && _isLoggedIn && ApiService.hasToken) {
         final ok = await ApiService.addPatient(patient);
         // تحديث متفائل: أضف محلياً ليظهر فوراً
         _patients = List<Patient>.from(_patients)..add(ok);
@@ -254,6 +293,10 @@ class AppProvider with ChangeNotifier {
     if (patient.id == null) return false;
 
     try {
+      if (!_isApiConnected || !_isLoggedIn || !ApiService.hasToken) {
+        // لا يمكن التحديث على الخادم بدون مصادقة
+        throw Exception('غير مصرح: لا يوجد اتصال أو توكن');
+      }
       await ApiService.updatePatient(patient.id!, patient);
       await loadData(); // إعادة تحميل البيانات
       return true;
@@ -268,6 +311,9 @@ class AppProvider with ChangeNotifier {
   // حذف مريض
   Future<bool> deletePatient(String patientId) async {
     try {
+      if (!_isApiConnected || !_isLoggedIn || !ApiService.hasToken) {
+        throw Exception('غير مصرح: لا يوجد اتصال أو توكن');
+      }
       await ApiService.deletePatient(patientId);
       await loadData(); // إعادة تحميل البيانات
       return true;
@@ -282,8 +328,11 @@ class AppProvider with ChangeNotifier {
   // إضافة دفعة جديدة
   Future<bool> addPayment(Payment payment) async {
     try {
+      if (!_isApiConnected || !_isLoggedIn || !ApiService.hasToken) {
+        throw Exception('غير مصرح: لا يوجد اتصال أو توكن');
+      }
       await ApiService.addPayment(payment);
-      await loadData(); // إعادة تحميل البيانات
+      await loadData(force: true); // إعادة تحميل البيانات
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -295,6 +344,10 @@ class AppProvider with ChangeNotifier {
 
   // الحصول على المرضى المتأخرين
   Future<List<Patient>> getOverduePatients() async {
+    // إذا لم يكن هناك مصادقة أو لم يتم تسجيل الدخول، استخدم البيانات المحلية مباشرة
+    if (!_isLoggedIn || !ApiService.hasToken) {
+      return _patients.where((patient) => patient.isOverdue).toList();
+    }
     try {
       return await ApiService.getOverduePatients();
     } catch (e) {
@@ -306,6 +359,10 @@ class AppProvider with ChangeNotifier {
 
   // الحصول على المرضى الذين لديهم مبالغ متبقية للدفع
   Future<List<Patient>> getPatientsWithPendingPayments() async {
+    // إذا لم يكن هناك مصادقة أو لم يتم تسجيل الدخول، استخدم البيانات المحلية مباشرة
+    if (!_isLoggedIn || !ApiService.hasToken) {
+      return _patients.where((patient) => patient.remainingAmount > 0).toList();
+    }
     try {
       return await ApiService.getPatientsWithPendingPayments();
     } catch (e) {
@@ -342,7 +399,7 @@ class AppProvider with ChangeNotifier {
   // تحديث البيانات
   Future<void> refreshData() async {
     if (_isLoggedIn) {
-      await loadData();
+      await loadData(force: true);
     }
   }
 }

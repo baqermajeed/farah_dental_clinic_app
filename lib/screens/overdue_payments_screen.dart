@@ -14,6 +14,7 @@ class OverduePaymentsScreen extends StatefulWidget {
 }
 
 class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
+  Future<List<Patient>>? _overdueFuture; // منع تكرار الطلبات
   final Map<String, TextEditingController> _notesControllers = {};
   final Map<String, String> _savedNotes = {}; // لحفظ الملاحظات
 
@@ -23,6 +24,13 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // استخدم Future واحد
+    _overdueFuture = context.read<AppProvider>().getOverduePatients();
   }
 
   // حساب عدد الأيام المتأخرة
@@ -265,7 +273,7 @@ class _OverduePaymentsScreenState extends State<OverduePaymentsScreen> {
       body: Consumer<AppProvider>(
         builder: (context, appProvider, child) {
           return FutureBuilder<List<Patient>>(
-            future: appProvider.getOverduePatients(),
+            future: _overdueFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
